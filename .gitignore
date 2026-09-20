@@ -1,0 +1,25 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+
+# 运行时数据
+testo_data.db
+testo_data.db-journal
+testo_data.db-wal
+exports/
+.runtime/
+
+# Coze 云盘元数据
+.coze-drive/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/

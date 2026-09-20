@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Testo 184 温度计数据读取汇总工具</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌡️</text></svg>">
+</head>
+<body>
+    <div class="app">
+        <!-- 顶部标题栏 -->
+        <header class="header">
+            <div class="header-left">
+                <span class="logo">🌡️</span>
+                <div>
+                    <h1>Testo 184 数据读取汇总工具</h1>
+                    <span class="subtitle">跨平台温度计数据管理</span>
+                </div>
+            </div>
+            <div class="header-right">
+                <button class="btn btn-ghost btn-sm" id="btn-history" title="查看历史会话">📋 历史</button>
+            </div>
+        </header>
+
+        <!-- 步骤进度条 -->
+        <div class="steps-bar">
+            <div class="step-item active" data-step="1">
+                <div class="step-circle">1</div>
+                <div class="step-label">配置测点</div>
+            </div>
+            <div class="step-line"></div>
+            <div class="step-item" data-step="2">
+                <div class="step-circle">2</div>
+                <div class="step-label">读取设备</div>
+            </div>
+            <div class="step-line"></div>
+            <div class="step-item" data-step="3">
+                <div class="step-circle">3</div>
+                <div class="step-label">数据汇总</div>
+            </div>
+            <div class="step-line"></div>
+            <div class="step-item" data-step="4">
+                <div class="step-circle">4</div>
+                <div class="step-label">导出Excel</div>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <main class="main-content">
+
+            <!-- Step 1: 配置测点 -->
+            <section class="step-panel active" id="panel-step1">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📝 配置测点信息</h2>
+                        <p class="card-desc">请输入所有测点编号，之后逐个插入温度计读取数据。测点号将与设备 SN 号对应。</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="form-row">
+                            <label>会话名称（可选）</label>
+                            <input type="text" id="session-name" placeholder="例如：2026年9月冷链运输监测" class="input">
+                        </div>
+                        <div class="form-row">
+                            <label>测点数量</label>
+                            <div class="input-group">
+                                <input type="number" id="point-count" min="1" max="100" value="5" class="input input-number">
+                                <button class="btn btn-primary" id="btn-gen-points">生成测点</button>
+                            </div>
+                        </div>
+                        <div class="points-grid" id="points-grid">
+                            <!-- 动态生成测点输入 -->
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn btn-primary btn-lg" id="btn-start-reading">
+                                开始读取设备 →
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 2: 读取设备 -->
+            <section class="step-panel" id="panel-step2">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>🔌 读取设备</h2>
+                        <p class="card-desc">按照提示依次插入温度计，每次读取一个设备。</p>
+                    </div>
+                    <div class="card-body">
+                        <!-- 进度指示 -->
+                        <div class="read-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" id="read-progress-fill" style="width: 0%"></div>
+                            </div>
+                            <div class="progress-text" id="read-progress-text">0 / 0 已读取</div>
+                        </div>
+
+                        <!-- 当前操作区 -->
+                        <div class="read-area" id="read-area">
+                            <div class="current-point-info" id="current-point-info">
+                                <div class="point-badge" id="current-point-badge">测点 #1</div>
+                                <div class="point-status" id="current-point-status">请插入温度计，然后点击"扫描设备"</div>
+                            </div>
+
+                            <div class="read-actions">
+                                <button class="btn btn-primary btn-lg" id="btn-scan">
+                                    🔍 扫描设备
+                                </button>
+                                <button class="btn btn-success btn-lg" id="btn-confirm-read" style="display:none">
+                                    ✅ 确认读取此设备
+                                </button>
+                            </div>
+
+                            <!-- 设备检测结果显示 -->
+                            <div class="device-result" id="device-result" style="display:none">
+                                <div class="device-info-card">
+                                    <div class="device-info-row">
+                                        <span class="device-label">设备名称</span>
+                                        <span class="device-value" id="dev-name">-</span>
+                                    </div>
+                                    <div class="device-info-row">
+                                        <span class="device-label">SN 号</span>
+                                        <span class="device-value" id="dev-sn">-</span>
+                                    </div>
+                                    <div class="device-info-row">
+                                        <span class="device-label">数据量</span>
+                                        <span class="device-value" id="dev-count">-</span>
+                                    </div>
+                                    <div class="device-info-row">
+                                        <span class="device-label">CSV 文件</span>
+                                        <span class="device-value" id="dev-files">-</span>
+                                    </div>
+                                </div>
+                                <!-- 数据预览 -->
+                                <div class="preview-section">
+                                    <h4>📊 数据预览（前20条）</h4>
+                                    <div class="preview-table-wrap">
+                                        <table class="preview-table" id="preview-table">
+                                            <thead><tr></tr></thead>
+                                            <tbody></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 已读取设备列表 -->
+                        <div class="read-devices-list" id="read-devices-list" style="display:none">
+                            <h3>✅ 已读取的设备</h3>
+                            <div id="devices-done-list"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 3: 数据汇总 -->
+            <section class="step-panel" id="panel-step3">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📋 数据汇总</h2>
+                        <p class="card-desc">所有设备数据已读取完成，请确认信息后导出。</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="summary-grid" id="summary-grid">
+                            <!-- 动态生成 -->
+                        </div>
+                        <div class="summary-stats" id="summary-stats">
+                            <!-- 统计信息 -->
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Step 4: 导出 -->
+            <section class="step-panel" id="panel-step4">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📊 导出 Excel</h2>
+                        <p class="card-desc">将汇总数据导出为 Excel 文件。</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="export-info" id="export-info">
+                            <div class="export-stat-row">
+                                <div class="export-stat">
+                                    <div class="export-stat-value" id="export-total-points">0</div>
+                                    <div class="export-stat-label">设备数量</div>
+                                </div>
+                                <div class="export-stat">
+                                    <div class="export-stat-value" id="export-total-records">0</div>
+                                    <div class="export-stat-label">数据总条数</div>
+                                </div>
+                                <div class="export-stat">
+                                    <div class="export-stat-value" id="export-sheets">3</div>
+                                    <div class="export-stat-label">工作表数</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-actions">
+                            <button class="btn btn-primary btn-lg" id="btn-export">
+                                📥 导出 Excel 文件
+                            </button>
+                            <button class="btn btn-ghost btn-lg" id="btn-new-session">
+                                🔄 新建会话
+                            </button>
+                        </div>
+                        <div class="export-success" id="export-success" style="display:none">
+                            <div class="success-icon">✅</div>
+                            <p>文件已下载！</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+
+        <!-- 状态栏 -->
+        <footer class="footer">
+            <span class="status-text" id="status-text">就绪</span>
+            <span class="session-info" id="session-info"></span>
+        </footer>
+
+        <!-- Toast 通知 -->
+        <div class="toast-container" id="toast-container"></div>
+
+        <!-- 历史会话弹窗 -->
+        <div class="modal-overlay" id="modal-history" style="display:none">
+            <div class="modal">
+                <div class="modal-header">
+                    <h3>📋 历史会话</h3>
+                    <button class="modal-close" id="btn-close-history">&times;</button>
+                </div>
+                <div class="modal-body" id="history-list">
+                    <!-- 动态生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>
