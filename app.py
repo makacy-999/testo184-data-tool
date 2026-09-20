@@ -29,15 +29,26 @@ except ImportError:
 
 # ─── 配置 ────────────────────────────────────────────────────────────────────
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "testo_data.db")
-EXPORT_DIR = os.path.join(BASE_DIR, "exports")
+# 兼容 PyInstaller 打包：frozen 模式下资源解压到 sys._MEIPASS
+if getattr(sys, "frozen", False):
+    BASE_DIR = sys._MEIPASS
+else:
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+# 数据库和导出目录放在用户主目录，打包后也可写
+APP_DATA_DIR = os.path.join(os.path.expanduser("~"), ".testo184_data")
+DB_PATH = os.path.join(APP_DATA_DIR, "testo_data.db")
+EXPORT_DIR = os.path.join(APP_DATA_DIR, "exports")
 os.makedirs(EXPORT_DIR, exist_ok=True)
 
 
 # ─── Flask 初始化 ────────────────────────────────────────────────────────────
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
+app = Flask(
+    __name__,
+    static_folder=os.path.join(BASE_DIR, "static"),
+    template_folder=os.path.join(BASE_DIR, "templates"),
+)
 
 
 # ─── 数据库 ──────────────────────────────────────────────────────────────────
