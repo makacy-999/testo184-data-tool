@@ -433,6 +433,53 @@ def export_excel(session_id):
         ws3.column_dimensions[get_column_letter(i)].width = w
     ws3.freeze_panes = "A2"
 
+    # ── Sheet 4+：每台设备单独一张完整数据表（按分钟记录的时间序列）──
+    used_names = {"汇总数据", "设备概览", "统计摘要"}
+    for pt in points:
+        records = conn.execute(
+            "SELECT * FROM device_records WHERE session_id=? AND point_number=? "
+            "ORDER BY date_val, time_val, record_index",
+            (session_id, pt["point_number"])
+        ).fetchall()
+        if not records:
+            continue
+
+        # Sheet 名：测点{N}，处理重名/超长/非法字符
+        base_name = f"测点{pt['point_number']}"
+        sheet_name = base_name
+        n = 2
+        while sheet_name in used_names:
+            sheet_name = f"{base_name}-{n}"
+            n += 1
+        sheet_name = sheet_name[:31]
+        used_names.add(sheet_name)
+
+        wsd = wb.create_sheet(sheet_name)
+        s_headers = ["序号", "日期", "时间", "温度(°C)", "湿度(%)", "报警"]
+        for col, h in enumerate(s_headers, 1):
+            cell = wsd.cell(row=1, column=col, value=h)
+            cell.font = HEADER_FONT
+            cell.fill = HEADER_FILL
+            cell.alignment = HEADER_ALIGN
+            cell.border = BORDER
+
+        for row_idx, rec in enumerate(records, 2):
+            wsd.cell(row=row_idx, column=1, value=rec["record_index"])
+            wsd.cell(row=row_idx, column=2, value=rec["date_val"] or "")
+            wsd.cell(row=row_idx, column=3, value=rec["time_val"] or "")
+            wsd.cell(row=row_idx, column=4, value=rec["temperature"])
+            wsd.cell(row=row_idx, column=5, value=rec["humidity"])
+            wsd.cell(row=row_idx, column=6, value=rec["alarm"] or "")
+            for c in range(1, len(s_headers) + 1):
+                wsd.cell(row=row_idx, column=c).alignment = DATA_ALIGN
+                wsd.cell(row=row_idx, column=c).border = BORDER
+
+        for i, w in enumerate([8, 14, 12, 12, 10, 12], 1):
+            wsd.column_dimensions[get_column_letter(i)].width = w
+        wsd.freeze_panes = "A2"
+        if len(records) > 0:
+            wsd.auto_filter.ref = f"A1:{get_column_letter(len(s_headers))}{len(records) + 1}"
+
     # 保存
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"Testo184_汇总_{ts}.xlsx"
