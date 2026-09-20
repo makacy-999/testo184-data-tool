@@ -5,6 +5,9 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -12,10 +15,8 @@ jobs:
         include:
           - os: macos-latest
             artifact_name: Testo184-Tool-macOS
-            sep: ':'
           - os: windows-latest
             artifact_name: Testo184-Tool-Windows
-            sep: ';'
     runs-on: ${{ matrix.os }}
     steps:
       - name: Checkout
@@ -30,17 +31,20 @@ jobs:
         run: pip install flask openpyxl pyinstaller
 
       - name: Build executable
-        run: >
-          pyinstaller --name Testo184Tool --onefile
-          --add-data "templates${{ matrix.sep }}templates"
-          --add-data "static${{ matrix.sep }}static"
-          app.py
+        shell: bash
+        run: |
+          SEP=":"
+          if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; fi
+          pyinstaller --name Testo184Tool --onefile \
+            --add-data "templates${SEP}templates" \
+            --add-data "static${SEP}static" \
+            app.py
 
       - name: Rename artifact
         shell: bash
         run: |
           cd dist
-          if [ "$(uname)" = "Darwin" ]; then
+          if [ "$RUNNER_OS" = "macOS" ]; then
             mv Testo184Tool Testo184Tool-macOS
           else
             mv Testo184Tool.exe Testo184Tool-Windows.exe
