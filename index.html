@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Testo 184 数据读取汇总工具 · 下载与使用说明</title>
+<style>
+:root{
+  --canvas:#F4F7F9;--surface:#FFFFFF;--ink:#14283A;--ink-2:#4A6072;--line:#D5DFE6;
+  --brand:#0A5A8C;--brand-deep:#093F60;--accent:#D9531E;--on-brand:#FFFFFF;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  --radius:10px;--sp-1:8px;--sp-2:16px;--sp-3:24px;--sp-4:40px;
+  --pad-x:clamp(16px,4vw,48px);--focus:#0A5A8C;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--canvas);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.7;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:var(--brand)}a:hover{color:var(--brand-deep)}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:4px}
+h1,h2,h3{line-height:1.3;margin:0}
+h1{font-size:clamp(26px,4vw,38px);letter-spacing:.01em}
+h2{font-size:clamp(20px,2.6vw,26px)}
+h3{font-size:17px}
+p{margin:0}
+.num{font-variant-numeric:tabular-nums;font-family:var(--mono)}
+.wrap{max-width:1080px;margin:0 auto;padding-left:var(--pad-x);padding-right:var(--pad-x)}
+.topbar{background:var(--brand-deep);color:#fff}
+.topbar .wrap{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-2);padding-top:10px;padding-bottom:10px;flex-wrap:wrap}
+.topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:15px}
+.topbar nav{display:flex;gap:var(--sp-2);flex-wrap:wrap}
+.topbar nav a{color:rgba(255,255,255,.85);text-decoration:none;font-size:14px;padding:4px 2px}
+.topbar nav a:hover{color:#fff;text-decoration:underline}
+.hero{background:linear-gradient(180deg,var(--surface),var(--canvas));border-bottom:1px solid var(--line)}
+.hero .wrap{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);gap:var(--sp-4);align-items:center;padding-top:var(--sp-4);padding-bottom:var(--sp-4)}
+.hero .tag{display:inline-block;font-size:13px;font-weight:600;color:var(--brand);border:1px solid var(--brand);border-radius:999px;padding:2px 12px;margin-bottom:var(--sp-2)}
+.hero p.lead{color:var(--ink-2);font-size:17px;margin-top:var(--sp-2);max-width:34em}
+.dl-row{display:flex;gap:var(--sp-2);flex-wrap:wrap;margin-top:var(--sp-3)}
+.btn{display:inline-flex;align-items:center;gap:8px;text-decoration:none;font-weight:600;font-size:15px;border-radius:var(--radius);padding:11px 20px;border:1px solid transparent;transition:transform .15s ease,opacity .15s ease}
+.btn:active{transform:translateY(1px)}
+.btn-primary{background:var(--brand);color:#fff}.btn-primary:hover{background:var(--brand-deep);color:#fff}
+.btn-ghost{border-color:var(--brand);color:var(--brand);background:transparent}.btn-ghost:hover{background:#E8F1F7}
+.meta-note{margin-top:var(--sp-2);font-size:13px;color:var(--ink-2)}
+.meta-note strong{color:var(--ink)}
+figure.chart{margin:0;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:var(--sp-2);box-shadow:0 1px 2px rgba(20,40,58,.06)}
+figure.chart figcaption{font-size:12.5px;color:var(--ink-2);margin-top:6px}
+section{padding-top:var(--sp-4);padding-bottom:var(--sp-4)}
+.sec-head{max-width:36em;margin-bottom:var(--sp-3)}
+.sec-head .kicker{font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--accent);text-transform:uppercase}
+.sec-head p{color:var(--ink-2);margin-top:6px}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:var(--sp-2);counter-reset:step}
+.step{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:var(--sp-2)}
+.step::before{counter-increment:step;content:counter(step,decimal-leading-zero);font-family:var(--mono);font-size:13px;font-weight:700;color:var(--brand);display:block;margin-bottom:6px}
+.step h3{margin-bottom:4px}.step p{font-size:14.5px;color:var(--ink-2)}
+.step .hint{display:inline-block;margin-top:8px;font-size:12.5px;background:#EAF2F8;color:#093F60;border-radius:6px;padding:2px 8px}
+.excel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);overflow:hidden}
+.excel .tabs{display:flex;flex-wrap:wrap;background:#EAF0F5;border-bottom:1px solid var(--line)}
+.excel .tab{font-size:13.5px;padding:8px 14px;border-right:1px solid var(--line);color:var(--ink-2);white-space:nowrap}
+.excel .tab.on{background:var(--surface);color:var(--ink);font-weight:700;border-bottom:2px solid var(--brand)}
+.excel .body{padding:var(--sp-2) var(--sp-3);min-height:118px}
+.excel .body h3{margin-bottom:4px}.excel .body p{font-size:14.5px;color:var(--ink-2)}
+.tablewrap{overflow-x:auto;margin-top:var(--sp-2)}
+table{border-collapse:collapse;width:100%;font-size:14px;background:var(--surface)}
+caption{text-align:left;font-size:13px;color:var(--ink-2);padding-bottom:8px}
+th,td{border:1px solid var(--line);padding:8px 12px;text-align:left;vertical-align:top}
+thead th{background:#EAF0F5;font-weight:700}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+tr.alarm td{background:#FDF1EA}
+tr.alarm td.warn{color:var(--accent);font-weight:700}
+.start{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:var(--sp-2)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:var(--sp-3)}
+.card h3{margin-bottom:6px}.card p{font-size:14.5px;color:var(--ink-2)}
+.card ol{margin:var(--sp-1) 0 0;padding-left:20px;font-size:14.5px;color:var(--ink-2)}
+.card ol li{margin-top:4px}
+.card code{font-family:var(--mono);background:#EAF0F5;border-radius:4px;padding:1px 6px;font-size:13px}
+pre{background:#0E2438;color:#DCE9F2;border-radius:8px;padding:14px 16px;font-family:var(--mono);font-size:13.5px;line-height:1.6;overflow-x:auto;margin:var(--sp-1) 0 0}
+pre .c{color:#7FA3BC}pre .p{color:#F0B429}
+details{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);margin-top:var(--sp-1)}
+summary{cursor:pointer;font-weight:600;padding:14px 18px}
+summary:hover{color:var(--brand)}
+details[open] summary{border-bottom:1px solid var(--line)}
+details .ans{padding:12px 18px 16px;font-size:14.5px;color:var(--ink-2)}
+details .ans code{font-family:var(--mono);background:#EAF0F5;border-radius:4px;padding:1px 6px;font-size:13px}
+footer{background:var(--brand-deep);color:rgba(255,255,255,.8);margin-top:var(--sp-4)}
+footer .wrap{padding-top:var(--sp-3);padding-bottom:var(--sp-3);display:flex;justify-content:space-between;gap:var(--sp-2);flex-wrap:wrap;font-size:13.5px}
+footer a{color:#fff}
+footer .lic{opacity:.8}
+@media (max-width:860px){.hero .wrap{grid-template-columns:1fr}figure.chart{order:-1}}
+@media print{body{background:#fff}.topbar,footer{background:#fff;color:#000;border-bottom:1px solid #ccc}.topbar nav{display:none}.btn{border:1px solid #333;color:#000}pre{background:#f2f2f2;color:#000}a{color:#000;text-decoration:none}section{padding:12px 0}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="9" y="2" width="6" height="13" rx="3" fill="#fff" opacity=".9"/>
+        <circle cx="12" cy="18" r="4.5" fill="#f0b429"/><circle cx="12" cy="18" r="2" fill="#d9531e"/>
+      </svg>
+      Testo 184 数据工具
+    </div>
+    <nav aria-label="页面导航">
+      <a href="#workflow">工作流程</a><a href="#excel">Excel 结构</a><a href="#start">快速开始</a>
+      <a href="#faq">常见问题</a>
+      <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section class="hero" aria-labelledby="main-title">
+    <div class="wrap">
+      <div>
+        <span class="tag">v1.0.0 · 免安装 · 数据仅存本机</span>
+        <h1 id="main-title">把 Testo 184 温度计的数据，<br>变成一张汇总 Excel</h1>
+        <p class="lead">逐台插入温度计自动读取，按测点编号对应设备 SN 号，一键导出包含<b>每测点逐分钟温度记录</b>的汇总工作簿。macOS 与 Windows 通用。</p>
+        <div class="dl-row">
+          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.0.0/Testo184Tool-macOS" target="_blank" rel="noopener noreferrer">下载 macOS 版 <span class="num">11.2 MB</span></a>
+          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.0.0/Testo184Tool-Windows.exe" target="_blank" rel="noopener noreferrer">下载 Windows 版 <span class="num">12.1 MB</span></a>
+          <a class="btn btn-ghost" href="https://github.com/makacy-999/testo184-data-tool/releases/tag/v1.0.0" target="_blank" rel="noopener noreferrer">版本发布页</a>
+        </div>
+        <p class="meta-note">下载后直接运行，无需安装 Python。<strong>测量数据 100% 保存在本机</strong>，不上传任何服务器。</p>
+      </div>
+      <figure class="chart">
+        <svg viewBox="0 0 460 210" width="100%" role="img" aria-labelledby="chart-t chart-d">
+          <title id="chart-t">逐分钟温度记录示意曲线</title>
+          <desc id="chart-d">示意图：温度计每分钟记录一条数据，曲线在 15:42 超过上限 8°C 触发报警标记。非真实测量数据。</desc>
+          <rect x="0" y="0" width="460" height="210" fill="#FDFEFF" rx="8"/>
+          <g stroke="#E3EBF1" stroke-width="1">
+            <line x1="46" y1="30" x2="440" y2="30"/><line x1="46" y1="70" x2="440" y2="70"/>
+            <line x1="46" y1="110" x2="440" y2="110"/><line x1="46" y1="150" x2="440" y2="150"/>
+          </g>
+          <line x1="46" y1="70" x2="440" y2="70" stroke="#D9531E" stroke-width="1.5" stroke-dasharray="5 4"/>
+          <text x="440" y="64" font-size="11" fill="#D9531E" text-anchor="end">上限 8.0°C</text>
+          <polyline fill="none" stroke="#0A5A8C" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+            points="46,120 80,116 114,112 148,109 182,104 216,96 250,88 284,79 318,72 352,62 386,58 420,55 440,54"/>
+          <circle cx="318" cy="72" r="5" fill="#D9531E"/>
+          <text x="318" y="92" font-size="11" fill="#D9531E" text-anchor="middle">15:42 报警</text>
+          <g font-size="11" fill="#4A6072">
+            <text x="40" y="34" text-anchor="end">12</text><text x="40" y="74" text-anchor="end">8</text>
+            <text x="40" y="114" text-anchor="end">4</text><text x="40" y="154" text-anchor="end">0</text>
+            <text x="46" y="180" text-anchor="middle">14:00</text>
+            <text x="243" y="180" text-anchor="middle">15:20</text>
+            <text x="440" y="180" text-anchor="end">16:00</text>
+            <text x="14" y="95" transform="rotate(-90 14 95)" text-anchor="middle">温度 °C</text>
+          </g>
+          <text x="46" y="200" font-size="11.5" fill="#7A8FA0">每分钟自动记录一条 · 示意数据</text>
+        </svg>
+        <figcaption>Testo 184 全程自动记录，每分钟一条数据；超限自动标记报警。本页曲线为功能示意，非真实测量值。</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="workflow" aria-labelledby="wf-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">工作流程</span>
+        <h2 id="wf-title">四步完成一次批量读取</h2>
+        <p>一台一台插，一台一台读。每读完一台系统会提示更换下一台，全部读完自动汇总。</p>
+      </div>
+      <div class="steps">
+        <div class="step"><h3>配置测点</h3><p>输入本次要监测的测点数量，生成测点清单，测点编号可自行修改。</p><span class="hint">例如：1 号冷库、2 号冷库</span></div>
+        <div class="step"><h3>逐台读取</h3><p>USB 插入第一台温度计 → 扫描识别 → 自动解析数据 → 确认读取。完成后提示插入下一台。</p><span class="hint">系统自动记录设备 SN 与测点的对应关系</span></div>
+        <div class="step"><h3>核对汇总</h3><p>所有设备读取完毕，核对测点—SN 对照表与数据条数，发现误读可单独重读。</p><span class="hint">数据同时存入本机数据库，可回看历史</span></div>
+        <div class="step"><h3>导出 Excel</h3><p>一键生成汇总工作簿：全部数据 + 每台设备独立工作表 + 统计摘要。</p><span class="hint">文件名自动带时间戳</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="excel" aria-labelledby="ex-title">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="kicker">导出成果</span>
+        <h2 id="ex-title">一个 Excel，看全所有测点</h2>
+        <p>工作簿内置 3 张公共表，外加每台设备一张独立明细表（Sheet 名即测点号），明细按时间排序、自带筛选。</p>
+      </div>
+      <div class="excel">
+        <div class="tabs" role="tablist" aria-label="工作簿结构示意">
+          <span class="tab on">汇总数据</span><span class="tab">设备概览</span><span class="tab">统计摘要</span>
+          <span class="tab" id="tab-p1">测点1</span><span class="tab">测点2</span><span class="tab">测点3 …</span>
+        </div>
+        <div class="body" aria-live="polite">
+          <h3 id="sheet-desc">「汇总数据」— 全部测点合并大表</h3>
+          <p id="sheet-p">列：测点号、设备 SN、序号、日期、时间、温度、湿度、报警。跨测点筛选、透视都在这一张表完成。</p>
+          <div class="tablewrap">
+            <table>
+              <caption>「测点1」工作表示例（示意数据）</caption>
+              <thead><tr><th scope="col">序号</th><th scope="col">日期</th><th scope="col">时间</th><th scope="col">温度 (°C)</th><th scope="col">湿度 (%)</th><th scope="col">报警</th></tr></thead>
+              <tbody>
+                <tr><td class="n">1</td><td class="num">2026-09-20</td><td class="num">14:00</td><td class="n">3.8</td><td class="n">56.2</td><td>—</td></tr>
+                <tr><td class="n">2</td><td class="num">2026-09-20</td><td class="num">14:01</td><td class="n">4.1</td><td class="n">55.8</td><td>—</td></tr>
+                <tr class="alarm"><td class="n">103</td><td class="num">2026-09-20</td><td class="num">15:42</td><td class="n">8.3</td><td class="n">52.0</td><td class="warn">超上限</td></tr>
+                <tr><td class="n">104</td><td class="num">2026-09-20</td><td class="num">15:43</td><td class="n">7.6</td><td class="n">53.1</td><td>—</td></tr>
+                <tr><td class="n">…</td><td class="num">…</td><td class="num">…</td><td class="n">…</td><td class="n">…</td><td>…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      <p class="meta-note" style="margin-top:12px">「设备概览」与「统计摘要」中每台设备一行：数据条数、起止时间、最高 / 最低 / 平均温度，超限记录在汇总表中以底色标出。</p>
+    </div>
+  </section>
+
+  <section id="start" aria-labelledby="st-title">
+    <div class="wrap">
+      <div class="sec-head"><span class="kicker">快速开始</span><h2 id="st-title">两种运行方式，选一种即可</h2></div>
+      <div class="start">
+        <div class="card">
+          <h3>方式一 · 下载可执行文件（推荐）</h3>
+          <p>适合非技术同事，无需安装任何环境。</p>
+          <ol>
+            <li>在页首点击对应平台按钮下载文件；</li>
+            <li>macOS 首次打开：右键文件 →「打开」→ 再点「打开」（绕过未签名提示）；</li>
+            <li>浏览器访问 <code>http://localhost:8000</code> 即可操作。</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>方式二 · 源码运行</h3>
+          <p>适合需要查看或修改代码的场景。</p>
+          <pre><span class="c"># macOS</span>
+git clone https://github.com/makacy-999/testo184-data-tool.git
+cd testo184-data-tool
+<span class="p">./start_mac.sh</span>
+
+<span class="c"># Windows：双击 start_win.bat 即可</span></pre>
+          <p style="margin-top:8px">首次运行自动创建虚拟环境并安装依赖，之后打开 <code>http://localhost:8000</code>。</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="faq" aria-labelledby="faq-title">
+    <div class="wrap">
+      <div class="sec-head"><span class="kicker">常见问题</span><h2 id="faq-title">使用前值得知道的几件事</h2></div>
+      <details><summary>数据存哪里？会上传吗？</summary><div class="ans">全部保存在你电脑上的本地数据库（程序目录的 <code>data</code> 子目录），不经过任何服务器。导出的 Excel 也只生成在本机，由你自己分发。</div></details>
+      <details><summary>支持哪些型号？可以同时插多台吗？</summary><div class="ans">当前版本针对 <strong>Testo 184</strong> 系列设计。读取方式为逐台插入：插一台读一台，读完提示更换下一台——这样测点与设备 SN 的对应关系最可靠，也避免 USB Hub 供电不足导致读数失败。</div></details>
+      <details><summary>识别不到温度计怎么办？</summary><div class="ans">点击「扫描 USB 设备」前先确认设备指示灯亮起；macOS 如仍无法识别，换个 USB 口或转接头再扫。接入后系统会把设备识别为一个 U 盘形状的存储设备。</div></details>
+      <details><summary>读错了能重读吗？历史能找回吗？</summary><div class="ans">可以。读取确认前可放弃重插；确认后发现错误，可在会话中删除该测点重读。所有历史会话保存在本机数据库，打开应用即可切换查看。</div></details>
+      <details><summary>是开源的吗？</summary><div class="ans">是，采用 MIT 协议开源，源码与更新发布在 <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>。</div></details>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div>Testo 184 数据读取汇总工具 · <span class="num">v1.0.0</span> · <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub</a></div>
+    <div class="lic">MIT License · 数据仅存本机</div>
+  </div>
+</footer>
+
+<script>
+(function(){try{
+  document.querySelectorAll('a[href^="#"]').forEach(function(a){a.addEventListener('click',function(e){var id=this.getAttribute('href').slice(1),t=document.getElementById(id);if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth',block:'start'});}});});
+  var desc={
+    '汇总数据':['「汇总数据」— 全部测点合并大表','列：测点号、设备 SN、序号、日期、时间、温度、湿度、报警。跨测点筛选、透视都在这一张表完成。'],
+    '设备概览':['「设备概览」— 每台设备一行','测点号、SN、数据条数、最早与最晚记录时间，一眼核对读取是否完整。'],
+    '统计摘要':['「统计摘要」— 每台设备一行统计','最高 / 最低 / 平均温度与数据点数，快速判断运输或储存是否超标。'],
+    '测点1':['「测点1」— 该设备的完整逐分钟记录','只包含这一台设备的数据：序号、日期、时间、温度、湿度、报警状态，按时间先后排列，表头可筛选。每台设备一张表，互不混排。'],
+    '测点2':['「测点2」— 与测点1结构完全一致','同一工作簿内每台设备各占一张表，Sheet 名即测点号，转发给任何人都能看懂。'],
+    '测点3 …':['测点数量不限','有几台设备就生成几张明细表，表名按测点号自动命名。']
+  };
+  var tabs=document.querySelectorAll('.excel .tab'),h=document.getElementById('sheet-desc'),p=document.getElementById('sheet-p');
+  tabs.forEach(function(t){t.style.cursor='pointer';t.addEventListener('click',function(){var d=desc[t.textContent.trim()];if(!d||!h||!p)return;tabs.forEach(function(x){x.classList.remove('on');});t.classList.add('on');h.textContent=d[0];p.textContent=d[1];});});
+}catch(e){}})();
+</script>
+</body>
+</html>
