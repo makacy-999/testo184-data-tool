@@ -208,6 +208,7 @@ class DeviceDetector:
                 csv_files = []
                 pdf_files = []
                 vi2_files = []
+                xml_files = []
                 try:
                     for root, dirs, files in os.walk(mp):
                         # 不排除隐藏目录：Testo 设备数据文件可能位于隐藏/系统目录（如 .SystemVolumeInformation）
@@ -218,19 +219,25 @@ class DeviceDetector:
                             fl = f.lower()
                             if fl.endswith(".csv"):
                                 csv_files.append(os.path.join(root, f))
-                            elif fl.endswith(".pdf") or "report" in fl or "measurement" in fl:
-                                pdf_files.append(os.path.join(root, f))
+                            elif fl.endswith((".xdp", ".xml")):
+                                # Testo 184 设备盘的 "configuration_数据.xdp" 即 XML 数据包
+                                xml_files.append(os.path.join(root, f))
                             elif fl.endswith(".vi2"):
                                 vi2_files.append(os.path.join(root, f))
+                            elif fl.endswith(".pdf"):
+                                pdf_files.append(os.path.join(root, f))
                             else:
-                                # 无扩展名的报告文件：按内容签名识别（Testo 设备报告常无扩展名）
+                                # 无扩展名/其他扩展名：按内容签名识别
                                 fp = os.path.join(root, f)
                                 try:
                                     with open(fp, "rb") as fh:
                                         sig = fh.read(2048)
-                                    if sig.startswith(b"%PDF"):
+                                    head = sig.lstrip(b"\xef\xbb\xbf \t\r\n")
+                                    if head.startswith(b"<?xml") or head.startswith(b"<xdp"):
+                                        xml_files.append(fp)
+                                    elif head.startswith(b"%PDF"):
                                         pdf_files.append(fp)
-                                    elif sig.startswith(b"D0CF11E0"):
+                                    elif sig.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
                                         vi2_files.append(fp)
                                 except Exception:
                                     pass
@@ -240,6 +247,7 @@ class DeviceDetector:
                 device["csv_files"] = csv_files
                 device["pdf_files"] = [os.path.basename(f) for f in pdf_files]
                 device["vi2_files"] = [os.path.basename(f) for f in vi2_files]
+                device["xml_files"] = [os.path.basename(f) for f in xml_files]
                 all_records = []
                 device_info = {}
 
@@ -253,7 +261,20 @@ class DeviceDetector:
                     except Exception as e:
                         device["error"] = f"解析 {os.path.basename(csv_file)} 失败: {e}"
 
-                # 如果没有 CSV，或 CSV 为空，尝试从 Testo 报告 PDF 中提取数据（内置报告）
+                # XML / XDP 数据文件（设备盘上的 "configuration_数据.xdp" 等）
+                if not all_records:
+                    for xml_file in xml_files:
+                        try:
+                            headers, records, info = cls.parse_testo_xml(xml_file)
+                            if records:
+                                for r in records:
+                                    r["source_file"] = os.path.basename(xml_file)
+                                all_records.extend(records)
+                                device_info.update({k: v for k, v in info.items() if v})
+                        except Exception as e:
+                            device["error"] = "解析 %s 失败: %s" % (os.path.basename(xml_file), e)
+
+                # 如果没有 CSV/XML，尝试从 Testo 报告 PDF 中提取数据（内置报告）
                 if not all_records:
                     for pdf_file in pdf_files:
                         try:
@@ -434,6 +455,178 @@ class DeviceDetector:
         device_info["csv_file"] = os.path.basename(csv_path)
         device_info["csv_path"] = csv_path
         return headers, records, device_info
+
+    @staticmethod
+    def _parse_temperature_text(txt):
+        """'4,5 °C' -> 4.5 ；无效返回 None"""
+        if txt is None:
+            return None
+        s = str(txt).strip()
+        if not s:
+            return None
+        import re as _re
+        m = _re.search(r"(-?\d+(?:[.,]\d+)?)", s)
+        if not m:
+            return None
+        try:
+            return float(m.group(1).replace(",", "."))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def parse_testo_xml(xml_path):
+        """解析 Testo 导出的 XML / XDP 数据文件。
+
+        典型来源：设备 U 盘上的 "testo 184 configuration_数据.xdp"
+        （XDP = XML Data Package，本质是 XML）。
+
+        参考结构（用户提供）：
+            <root>
+                <measurement>
+                    <time>2026-09-20 15:00:00</time>
+                    <temperature>4.2</temperature>
+                </measurement>
+                ...
+            </root>
+
+        兼容：XML 命名空间、标签/属性变体、多种时间格式
+        （ISO / 中式 / 美式 / 德式 / epoch 秒毫秒）、逗号小数、
+        °C 单位残留，humidity 一并提取。
+        """
+        import xml.etree.ElementTree as ET
+
+        with open(xml_path, "rb") as fh:
+            raw = fh.read()
+        try:
+            root = ET.fromstring(raw)
+        except ET.ParseError:
+            head = raw.lstrip(b"\xef\xbb\xbf \t\r\n")
+            try:
+                root = ET.fromstring(head)
+            except ET.ParseError as e2:
+                raise ValueError("XML 解析失败: %s" % e2)
+
+        def local(tag):
+            return tag.rsplit("}", 1)[-1].strip().lower()
+
+        TIME_TAGS = {"time", "datetime", "timestamp", "date", "datum", "zeit",
+                     "meastime", "measurementtime", "recordtime"}
+        TEMP_TAGS = {"temperature", "temperatur", "temp", "t", "value",
+                     "measvalue", "measuredvalue"}
+        HUM_TAGS = {"humidity", "hum", "rhumidity", "relativehumidity", "feuchte"}
+        CONTAINERS = {"measurement", "record", "reading", "row", "datapoint",
+                      "sample", "logvalue", "entry"}
+
+        def field_text(container, tags, depth_limit=3):
+            """在容器自身属性及下 depth_limit 层内（BFS）找标签/属性匹配的值"""
+            # 容器自身的属性：<measurement time="..." temperature="..."/>
+            for k, v in container.attrib.items():
+                if local(k) in tags and v.strip():
+                    return v.strip()
+            queue = [(child, 1) for child in container]
+            while queue:
+                cur, d = queue.pop(0)
+                ln = local(cur.tag)
+                if ln in tags:
+                    txt = (cur.text or "").strip() if cur.text else ""
+                    if txt:
+                        return txt
+                for k, v in cur.attrib.items():
+                    if local(k) in tags and v.strip():
+                        return v.strip()
+                if d < depth_limit:
+                    queue.extend((c, d + 1) for c in cur)
+
+        def has_nested_container(el, depth_limit=6):
+            stack = [(child, 1) for child in el]
+            while stack:
+                cur, d = stack.pop()
+                if local(cur.tag) in CONTAINERS:
+                    return True
+                if d < depth_limit:
+                    stack.extend((c, d + 1) for c in cur)
+            return False
+
+        records = []
+        for c in root.iter():
+            if local(c.tag) not in CONTAINERS:
+                continue
+            if has_nested_container(c):
+                continue  # 外层容器跳过，只解析最内层，避免重复计数
+            time_txt = field_text(c, TIME_TAGS)
+            temp_txt = field_text(c, TEMP_TAGS)
+            if time_txt is None and temp_txt is None:
+                continue
+            hum_txt = field_text(c, HUM_TAGS)
+            records.append({
+                "date": "", "time": "",
+                "temperature": DeviceDetector._parse_temperature_text(temp_txt),
+                "humidity": DeviceDetector._parse_temperature_text(hum_txt),
+                "alarm": "",
+                "_raw": {"time_text": time_txt or "", "temp_text": temp_txt or ""},
+            })
+
+        # 时间文本 -> date / time 字段
+        import re as _re
+        from datetime import datetime as _dtm
+        TIME_FORMATS = [
+            "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M",
+            "%Y-%m-%dT%H:%M", "%Y.%m.%d %H:%M:%S", "%Y.%m.%d %H:%M",
+            "%d.%m.%Y %H:%M:%S", "%d.%m.%Y %H:%M",
+            "%m/%d/%Y %H:%M:%S", "%m/%d/%Y %H:%M",
+            "%Y/%m/%d %H:%M:%S", "%Y/%m/%d %H:%M",
+        ]
+        for r in records:
+            t = (r["_raw"].get("time_text") or "").strip()
+            d, tm = "", ""
+            if t:
+                parsed = None
+                if _re.fullmatch(r"\d{9,13}", t):  # epoch 秒 / 毫秒
+                    try:
+                        ts = int(t)
+                        if ts > 10 ** 12:
+                            ts /= 1000.0
+                        parsed = _dtm.fromtimestamp(ts)
+                    except (ValueError, OSError, OverflowError):
+                        parsed = None
+                else:
+                    for fmt in TIME_FORMATS:
+                        try:
+                            parsed = _dtm.strptime(t, fmt)
+                            break
+                        except ValueError:
+                            continue
+                if parsed is None:
+                    if _re.fullmatch(r"\d{1,2}:\d{2}(:\d{2})?", t):
+                        tm = t if t.count(":") == 2 else t + ":00"
+                    else:
+                        d, tm = t, ""  # 保留原文，避免丢数据
+                else:
+                    d = parsed.strftime("%Y-%m-%d")
+                    tm = parsed.strftime("%H:%M:%S")
+            r["date"], r["time"] = d, tm
+
+        # 温度与时间都拿不到的记录丢弃
+        records = [r for r in records
+                   if r["temperature"] is not None or (r["date"] or r["time"])]
+
+        # 提取序列号：任意元素/属性名含 serial
+        info = {"serial_number": "", "xml": True, "source": "xml"}
+        sn_found = ""
+        for el in root.iter():
+            if "serial" in local(el.tag) and (el.text or "").strip():
+                sn_found = el.text.strip()
+                break
+            for k, v in el.attrib.items():
+                if "serial" in local(k) and v.strip():
+                    sn_found = v.strip()
+                    break
+            if sn_found:
+                break
+        info["serial_number"] = sn_found
+
+        headers = ["date", "time", "temperature", "humidity", "alarm"]
+        return headers, records, info
 
     @staticmethod
     def parse_testo_pdf(pdf_path):
@@ -999,23 +1192,45 @@ def read_device(session_id):
 
 # ─── vi2 导入核心（上传路由与目录监控共用） ──────────────────────────────────
 
-def _import_vi2_to_session(session_id, path, sample_minutes=None, start_time=None):
-    """把磁盘上的 .vi2 文件解析并导入到会话的下一个未关联测点。
+def _import_data_to_session(session_id, path, sample_minutes=None, start_time=None):
+    """把数据文件（.vi2 存档 / .xml·.xdp 数据包）解析并导入到会话的下一个未关联测点。
     返回 (ok: bool, payload: dict)"""
     try:
         with open(path, "rb") as fh:
-            sig = fh.read(8)
+            sig = fh.read(2048)
     except Exception as e:
         return False, {"error": f"读取文件失败: {e}"}
-    if sig != b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
-        return False, {"error": "不是有效的 .vi2 文件（缺少 OLE 签名）"}
-    try:
-        parsed = parse_vi2(path, sample_minutes=sample_minutes, start_time=start_time)
-    except Exception as e:
-        return False, {"error": f"解析 .vi2 失败: {e}"}
-    if not parsed.get("records"):
-        return False, {"error": "文件中未解析到温度数据"}
-    sn = parsed.get("serial_number", "未知")
+    head = sig.lstrip(b"\xef\xbb\xbf \t\r\n")
+    is_ole = sig.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+    is_xml = (os.path.splitext(path)[1].lower() in (".xml", ".xdp")
+              or head.startswith(b"<?xml") or head.startswith(b"<xdp"))
+    if is_ole:
+        if not VI2_AVAILABLE:
+            return False, {"error": "缺少 vi2 解析库(olefile)，请执行 pip install olefile"}
+        try:
+            parsed = parse_vi2(path, sample_minutes=sample_minutes, start_time=start_time)
+        except Exception as e:
+            return False, {"error": f"解析 .vi2 失败: {e}"}
+        if not parsed.get("records"):
+            return False, {"error": "文件中未解析到温度数据"}
+        sn = parsed.get("serial_number", "未知")
+        records = [{"date": r["date"], "time": r["time"],
+                    "temperature": r["temperature"], "humidity": None,
+                    "t_code": r["t_code"]} for r in parsed["records"]]
+        device_label = f"vi2-{sn}"
+        raw_unit = parsed.get("unit", "°C")
+    elif is_xml:
+        try:
+            _headers, records, info = DeviceDetector.parse_testo_xml(path)
+        except Exception as e:
+            return False, {"error": f"解析 XML/XDP 失败: {e}"}
+        if not records:
+            return False, {"error": "XML 文件中未解析到温度数据（没有 measurement/record 记录）"}
+        sn = info.get("serial_number") or "未知"
+        device_label = f"xml-{sn}"
+        raw_unit = "°C"
+    else:
+        return False, {"error": "不是支持的数据文件（支持 .vi2 存档与 .xml / .xdp 数据包）"}
     conn = get_db()
     next_point = conn.execute(
         "SELECT * FROM measurement_points WHERE session_id=? AND (serial_number='' OR serial_number IS NULL) "
@@ -1026,16 +1241,21 @@ def _import_vi2_to_session(session_id, path, sample_minutes=None, start_time=Non
         conn.close()
         return False, {"error": "所有测点都已关联设备，请增加测点或新建会话"}
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    for idx, rec in enumerate(parsed["records"], 1):
+    for idx, rec in enumerate(records, 1):
+        raw = {"unit": raw_unit}
+        if rec.get("t_code") is not None:
+            raw["t_code"] = rec["t_code"]
+        if rec.get("_raw"):
+            raw.update(rec["_raw"])
         conn.execute(
             "INSERT INTO device_records "
             "(session_id, point_number, serial_number, device_name, csv_file, "
             " record_index, date_val, time_val, temperature, humidity, alarm, raw_data, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-            (session_id, next_point["point_number"], sn, f"vi2-{sn}",
+            (session_id, next_point["point_number"], sn, device_label,
              os.path.basename(path), idx,
-             rec["date"], rec["time"], rec["temperature"], None, "",
-             json.dumps({"t_code": rec["t_code"], "unit": parsed.get("unit", "°C")}, ensure_ascii=False),
+             rec["date"], rec["time"], rec["temperature"], rec.get("humidity"), "",
+             json.dumps(raw, ensure_ascii=False),
              now)
         )
     conn.execute("UPDATE measurement_points SET serial_number=? WHERE id=?", (sn, next_point["id"]))
@@ -1046,14 +1266,15 @@ def _import_vi2_to_session(session_id, path, sample_minutes=None, start_time=Non
     conn.execute("UPDATE sessions SET completed_points=? WHERE id=?", (completed, session_id))
     conn.commit()
     conn.close()
+    vi2_meta = parsed if is_ole else {}
     return True, {
         "point_number": next_point["point_number"],
         "serial_number": sn,
-        "record_count": len(parsed["records"]),
-        "sample_minutes": parsed["sample_minutes"],
-        "start_time": parsed["start_time"],
+        "record_count": len(records),
+        "sample_minutes": vi2_meta.get("sample_minutes"),
+        "start_time": vi2_meta.get("start_time"),
         "completed_points": completed,
-        "message": f"测点 {next_point['point_number']} 导入 {len(parsed['records'])} 条数据 (SN: {sn})"
+        "message": f"测点 {next_point['point_number']} 导入 {len(records)} 条数据 (SN: {sn})"
     }
 
 
@@ -1061,9 +1282,7 @@ def _import_vi2_to_session(session_id, path, sample_minutes=None, start_time=Non
 
 @app.route("/api/sessions/<session_id>/import-vi2", methods=["POST"])
 def import_vi2(session_id):
-    """上传一个或多个 .vi2 文件，依次导入到未关联测点"""
-    if not VI2_AVAILABLE:
-        return jsonify({"error": "缺少 vi2 解析库(olefile)，请执行 pip install olefile"}), 500
+    """上传一个或多个数据文件（.vi2 / .xml / .xdp），依次导入到未关联测点"""
     files = request.files.getlist("file")
     if not files:
         return jsonify({"error": "未收到文件"}), 400
@@ -1077,10 +1296,13 @@ def import_vi2(session_id):
     start_time = request.form.get("start_time") or None
     results = []
     for file in files:
-        tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.vi2")
+        ext = os.path.splitext(file.filename or "")[1].lower()
+        if not ext:
+            ext = ".bin"
+        tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}{ext}")
         try:
             file.save(tmp_path)
-            ok, payload = _import_vi2_to_session(session_id, tmp_path, sample_minutes, start_time)
+            ok, payload = _import_data_to_session(session_id, tmp_path, sample_minutes, start_time)
             entry = dict(payload)
             entry["ok"] = ok
             entry["file"] = file.filename
@@ -1104,23 +1326,26 @@ WATCHERS = {}  # session_id -> {"path", "stop", "results", "files", "pending", "
 
 
 def _list_data_files(path):
-    """列出目录下可作为数据导入的文件（.vi2 及无扩展名的 OLE2 存档）"""
+    """列出目录下可作为数据导入的文件（.vi2 / .xml / .xdp 及签名匹配的无扩展名文件）"""
     out = []
     try:
         for f in os.listdir(path):
             fp = os.path.join(path, f)
             if not os.path.isfile(fp):
                 continue
-            if f.lower().endswith(".vi2"):
+            if f.lower().endswith((".vi2", ".xdp", ".xml")):
                 out.append(fp)
-            else:
-                # Testo 软件导出的存档可能无扩展名：按 OLE2 签名识别
-                try:
-                    with open(fp, "rb") as fh:
-                        if fh.read(8) == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
-                            out.append(fp)
-                except OSError:
-                    pass
+                continue
+            # Testo 软件导出的文件可能无扩展名：按内容签名识别
+            try:
+                with open(fp, "rb") as fh:
+                    sig = fh.read(2048)
+                head = sig.lstrip(b"\xef\xbb\xbf \t\r\n")
+                if (sig.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
+                        or head.startswith(b"<?xml") or head.startswith(b"<xdp")):
+                    out.append(fp)
+            except OSError:
+                pass
     except OSError:
         pass
     return out
@@ -1164,12 +1389,12 @@ def _watch_loop(session_id, path, stop_event):
                 if f in w["all_files"]:
                     continue
                 w["all_files"][f] = size
-                if not f.lower().endswith(".vi2"):
-                    # 不是 .vi2 的新文件 → 记入诊断（可能是 Testo 保存的其他格式）
+                if not f.lower().endswith((".vi2", ".xdp", ".xml")):
+                    # 不是数据格式的新文件 → 记入诊断（可能是 Testo 保存的其他格式）
                     seen = w["new_files_seen"]
                     if len(seen) < 30 and f not in [x.get("file") for x in seen]:
                         seen.append({"file": f, "size": size,
-                                     "note": "新文件但不是 .vi2/OLE2 数据格式，未导入"})
+                                     "note": "新文件但不是数据格式（.vi2/.xml/.xdp/OLE2），未导入"})
             # 数据文件检测
             current = {}
             for f in _list_data_files(path):
@@ -1182,7 +1407,7 @@ def _watch_loop(session_id, path, stop_event):
                     continue
                 if w["pending"].get(f) == size:
                     # 大小两轮一致，文件已写完 → 自动导入
-                    ok, payload = _import_vi2_to_session(session_id, f)
+                    ok, payload = _import_data_to_session(session_id, f)
                     entry = dict(payload)
                     entry["ok"] = ok
                     entry["file"] = os.path.basename(f)
