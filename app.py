@@ -1436,6 +1436,19 @@ def read_device(session_id):
 
 # ─── vi2 导入核心（上传路由与目录监控共用） ──────────────────────────────────
 
+def _looks_like_csv(path, head):
+    """按扩展名或文本特征判断是否按 CSV 解析（ComSoft 导出常用逗号/分号分隔）"""
+    if os.path.splitext(path)[1].lower() == ".csv":
+        return True
+    if not head or head.startswith(b"\xd0\xcf") or head.startswith(b"%PDF"):
+        return False
+    if b"\n" not in head:
+        return False
+    if b"," not in head and b";" not in head and b"\t" not in head:
+        return False
+    return all(32 <= b < 127 or b in (9, 10, 13) or b >= 160 for b in head[:256])
+
+
 def _import_data_to_session(session_id, path, sample_minutes=None, start_time=None):
     """把数据文件（.vi2 存档 / .xml·.xdp 数据包）解析并导入到会话的下一个未关联测点。
     返回 (ok: bool, payload: dict)"""
@@ -1473,6 +1486,27 @@ def _import_data_to_session(session_id, path, sample_minutes=None, start_time=No
         sn = info.get("serial_number") or "未知"
         device_label = f"xml-{sn}"
         raw_unit = "°C"
+    elif _looks_like_csv(path, head):
+        # ComSoft 专业版导出的 CSV（分隔符逗号/分号，德文/中文/英文表头均可）
+        try:
+            _headers, records, info = DeviceDetector.parse_csv(path)
+        except Exception as e:
+            return False, {"error": f"解析 CSV 失败: {e}"}
+        if not records:
+            return False, {"error": "CSV 文件中未解析到温度数据"}
+        sn = info.get("serial_number") or "未知"
+        if sn == "未知":
+            try:
+                with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+                    sn = DeviceDetector._extract_sn_from_text(fh.read(4096)) or "未知"
+            except OSError:
+                pass
+        device_label = f"csv-{sn}"
+        raw_unit = "°C"
+        records = [{"date": r.get("date", ""), "time": r.get("time", ""),
+                    "temperature": DeviceDetector._parse_temperature_text(r.get("temperature")),
+                    "humidity": DeviceDetector._parse_temperature_text(r.get("humidity")),
+                    "_raw": r.get("_raw")} for r in records]
     elif head.startswith(b"%PDF") or os.path.splitext(path)[1].lower() == ".pdf":
         # Testo 报告 PDF：数据表格或图形曲线（设备盘 measurement report）
         try:
@@ -1489,7 +1523,7 @@ def _import_data_to_session(session_id, path, sample_minutes=None, start_time=No
                     "humidity": DeviceDetector._parse_temperature_text(r.get("humidity")),
                     "_raw": r.get("_raw")} for r in pdf_records]
     else:
-        return False, {"error": "不是支持的数据文件（支持 .vi2 存档、.xml / .xdp 数据包、Testo 报告 PDF）"}
+        return False, {"error": "不是支持的数据文件（支持 .vi2 存档、CSV 导出、.xml / .xdp 数据包、Testo 报告 PDF）"}
     conn = get_db()
     next_point = conn.execute(
         "SELECT * FROM measurement_points WHERE session_id=? AND (serial_number='' OR serial_number IS NULL) "
@@ -1592,7 +1626,7 @@ def _list_data_files(path):
             fp = os.path.join(path, f)
             if not os.path.isfile(fp):
                 continue
-            if f.lower().endswith((".vi2", ".xdp", ".xml")):
+            if f.lower().endswith((".vi2", ".xdp", ".xml", ".csv", ".pdf")):
                 out.append(fp)
                 continue
             # Testo 软件导出的文件可能无扩展名：按内容签名识别
@@ -1601,7 +1635,8 @@ def _list_data_files(path):
                     sig = fh.read(2048)
                 head = sig.lstrip(b"\xef\xbb\xbf \t\r\n")
                 if (sig.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1")
-                        or head.startswith(b"<?xml") or head.startswith(b"<xdp")):
+                        or head.startswith(b"<?xml") or head.startswith(b"<xdp")
+                        or head.startswith(b"%PDF")):
                     out.append(fp)
             except OSError:
                 pass
@@ -1648,12 +1683,12 @@ def _watch_loop(session_id, path, stop_event):
                 if f in w["all_files"]:
                     continue
                 w["all_files"][f] = size
-                if not f.lower().endswith((".vi2", ".xdp", ".xml")):
+                if not f.lower().endswith((".vi2", ".xdp", ".xml", ".csv", ".pdf")):
                     # 不是数据格式的新文件 → 记入诊断（可能是 Testo 保存的其他格式）
                     seen = w["new_files_seen"]
                     if len(seen) < 30 and f not in [x.get("file") for x in seen]:
                         seen.append({"file": f, "size": size,
-                                     "note": "新文件但不是数据格式（.vi2/.xml/.xdp/OLE2），未导入"})
+                                     "note": "新文件但不是数据格式（.vi2/.csv/.xml/.xdp/PDF/OLE2），未导入"})
             # 数据文件检测
             current = {}
             for f in _list_data_files(path):
@@ -1852,6 +1887,51 @@ def comsoft_launch():
         return jsonify({"ok": True, "launched": target})
     except Exception as e:
         return jsonify({"error": f"启动失败: {e}"}), 500
+
+
+def _recommended_export_dir():
+    """推荐给用户在 ComSoft 里保存/导出数据的接力目录（自动创建）"""
+    home = os.path.expanduser("~")
+    candidates = [
+        os.path.join(home, "Desktop", "testo_export"),
+        os.path.join(home, "桌面", "testo_export"),
+        os.path.join(home, "Documents", "testo_export"),
+        os.path.join(home, "文档", "testo_export"),
+        os.path.join(home, "testo_export"),
+    ]
+    for d in candidates:
+        if os.path.isdir(os.path.dirname(d)):
+            try:
+                os.makedirs(d, exist_ok=True)
+                return d
+            except OSError:
+                continue
+    d = os.path.join(home, "testo_export")
+    try:
+        os.makedirs(d, exist_ok=True)
+    except OSError:
+        pass
+    return d
+
+
+@app.route("/api/export-folder", methods=["GET"])
+def export_folder_get():
+    return jsonify({"path": _recommended_export_dir()})
+
+
+@app.route("/api/export-folder/open", methods=["POST"])
+def export_folder_open():
+    d = _recommended_export_dir()
+    try:
+        if sys.platform == "win32":
+            os.startfile(d)  # noqa
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", d])
+        else:
+            subprocess.Popen(["xdg-open", d])
+        return jsonify({"ok": True, "path": d})
+    except Exception as e:
+        return jsonify({"error": f"打开文件夹失败: {e}", "path": d}), 500
 
 
 # ─── API: 导出 Excel ─────────────────────────────────────────────────────────

@@ -169,27 +169,31 @@
 
                         <!-- Testo / ComSoft 软件联动：监控导出目录，自动导入 -->
                         <div class="comsoft-link" id="comsoft-box" style="margin-top:24px;padding-top:20px;border-top:1px dashed #ddd">
-                            <h3>🔄 Testo 软件联动（全自动模式）</h3>
+                            <h3>🔄 官方 ComSoft 联动（读取温度计内全部数据）</h3>
                             <p class="card-desc">
-                                温度计数据需官方软件读取时用这一步：插上温度计 → 在 Testo 软件里<b>读取并保存数据</b>（.vi2 / .xml / .xdp）到下面填的文件夹 →
-                                本工具<b>自动抓取、解析并汇总</b>，全程无需手动切换。适合一次读多台设备。
+                                温度计内部存有<b>全部测量数据</b>，但插 USB 只生成精简 PDF 报告（曲线最多 324 点）；
+                                全量数据需官方软件 ComSoft <b>Professional 专业版</b>读取（Basic 基础版不支持 184）。
+                                流程：点「一键调用官方软件」→ 在 ComSoft 里<b>连接并读取温度计</b> →
+                                把数据<b>保存/导出</b>到下方文件夹（.vi2 或 CSV 均可）→ 本工具<b>自动抓取、解析并汇总</b>，多台设备依次保存即可。
                             </p>
                             <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                                <input type="text" id="watch-dir" class="input" placeholder="Testo 软件保存数据文件的文件夹，如 C:\Users\你\Desktop\testo导出" style="flex:1;min-width:220px">
+                                <input type="text" id="watch-dir" class="input" placeholder="ComSoft 保存数据文件的文件夹（已为你预填推荐目录）" style="flex:1;min-width:220px">
                                 <button class="btn btn-primary" id="btn-watch">🔄 开始监控</button>
-                                <button class="btn" id="btn-detect-comsoft">🔍 一键调用 Testo 软件</button>
+                                <button class="btn" id="btn-open-folder">📂 打开文件夹</button>
+                                <button class="btn" id="btn-detect-comsoft">🔍 一键调用官方软件</button>
                             </div>
                             <div id="comsoft-list" style="margin-top:10px;font-size:13px"></div>
                             <div id="watch-status" style="margin-top:10px;font-size:13px;color:#666">未启动监控</div>
                             <div id="watch-diag" style="margin-top:8px;font-size:12px;color:#b26a00;line-height:1.7"></div>
                             <details style="margin-top:12px;font-size:13px;color:#666">
-                                <summary style="cursor:pointer">不知道填哪个文件夹？点开看操作指引</summary>
+                                <summary style="cursor:pointer">操作指引（ComSoft Professional 读取 184 全量数据）</summary>
                                 <div style="margin-top:8px;line-height:1.8;padding:10px;background:#f7f9fb;border-radius:8px">
-                                    1. 建一个空文件夹（如桌面上的「testo导出」），把路径填到上面；<br>
-                                    2. 打开你电脑上能读这台温度计的 Testo 软件（ComSoft 系列），插上设备读取；<br>
-                                    3. 在 Testo 软件里把数据「保存 / 导出」为 .vi2 / .xml / .xdp 文件，保存到刚才那个文件夹；<br>
-                                    4. 本工具检测到新文件后会自动导入并提示，多台设备依次保存即可；<br>
-                                    5. 全部导完后点「下一步：数据汇总」导出 Excel。
+                                    1. 点「📂 打开文件夹」——这是给 ComSoft 用的交接文件夹（路径已预填到输入框）；<br>
+                                    2. 点「🔍 一键调用官方软件」启动 ComSoft Professional（也可手动打开）；<br>
+                                    3. 插上温度计，在 ComSoft 里<b>读取记录仪数据</b>（184 会自动连接）；<br>
+                                    4. 在 ComSoft 里把测量数据<b>保存为 .vi2 档案</b>（文件→另存为）或<b>导出 CSV</b>，保存位置选上面打开的文件夹；<br>
+                                    5. 本工具检测到新文件后<b>自动导入</b>并显示条数，多台设备依次保存即可；<br>
+                                    6. 全部导完后点「下一步：数据汇总」导出 Excel。
                                 </div>
                             </details>
                         </div>

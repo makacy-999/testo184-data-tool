@@ -386,8 +386,30 @@ async function importVi2() {
     }
 }
 
-// ─── Step 2: Testo 软件联动（目录监控，新 .vi2 自动导入） ──────────────────
+// ─── Step 2: Testo 软件联动（目录监控，新 .vi2/.csv 自动导入） ──────────────
 let watchTimer = null;
+
+async function prefillExportFolder() {
+    const dirEl = document.getElementById('watch-dir');
+    if (!dirEl || dirEl.value.trim()) return;
+    try {
+        const r = await api('/api/export-folder');
+        if (r && r.path) dirEl.value = r.path;
+    } catch (e) { /* 静默：用户可手动填写 */ }
+}
+
+async function openExportFolder() {
+    try {
+        const r = await api('/api/export-folder/open', { method: 'POST' });
+        if (r && r.ok) {
+            toast('已打开交接文件夹，在 ComSoft 里保存/导出数据时选择这个位置', 'success');
+            const dirEl = document.getElementById('watch-dir');
+            if (dirEl && !dirEl.value.trim() && r.path) dirEl.value = r.path;
+        }
+    } catch (e) {
+        toast(`打开失败: ${e.message}`, 'error');
+    }
+}
 
 async function detectComsoft() {
     const list = document.getElementById('comsoft-list');
@@ -396,11 +418,11 @@ async function detectComsoft() {
     try {
         const r = await api('/api/comsoft/detect');
         if (r.platform !== 'win32') {
-            if (list) list.innerHTML = '<span style="color:#c62828">自动调用仅支持 Windows。Mac 请手动打开 Testo 软件读取并保存 .vi2，本工具会自动导入。</span>';
+            if (list) list.innerHTML = '<span style="color:#c62828">自动调用仅支持 Windows（ComSoft 官方软件只有 Windows 版）。Mac 请手动用虚拟机/其他 Windows 电脑读取，把 .vi2 或 CSV 存到监控文件夹，本工具会自动导入。</span>';
             return;
         }
         if (!r.softwares || r.softwares.length === 0) {
-            if (list) list.innerHTML = '<span style="color:#c62828">未在电脑上找到 Testo/ComSoft 软件。请确认已安装，或手动打开软件。也支持直接用上方的「导入 .vi2」。</span>';
+            if (list) list.innerHTML = '<span style="color:#c62828">未在电脑上找到 ComSoft 软件。请确认 ComSoft Professional（专业版，支持 testo 184 全量读取）已安装，或手动打开。读取后把 .vi2 / CSV 保存到监控文件夹即可。</span>';
             return;
         }
         const items = r.softwares.map(sw =>
@@ -409,13 +431,13 @@ async function detectComsoft() {
                 ${sw.exe ? `<button class="btn btn-sm" style="padding:4px 12px" onclick="launchComsoft('${sw.exe.replace(/\\/g, '\\\\')}')">▶ 启动</button>` : ''}
                 <span style="color:#999;font-size:12px">${sw.location || ''}</span>
             </div>`).join('');
-        if (list) list.innerHTML = '<b>检测到以下 Testo 软件：</b><br>' + items;
+        if (list) list.innerHTML = '<b>检测到以下 Testo 官方软件：</b><br>' + items;
         // 同时启动第一个
         if (r.softwares[0].exe) await launchComsoft(r.softwares[0].exe);
     } catch (e) {
         if (list) list.innerHTML = `<span style="color:#c62828">检测失败: ${e.message}</span>`;
     } finally {
-        if (btn) { btn.disabled = false; btn.innerHTML = '🔍 一键调用 Testo 软件'; }
+        if (btn) { btn.disabled = false; btn.innerHTML = '🔍 一键调用官方软件'; }
     }
 }
 
@@ -423,7 +445,7 @@ async function launchComsoft(exe) {
     try {
         const r = await api('/api/comsoft/launch', { method: 'POST', body: { exe } });
         if (r.ok) {
-            toast('已启动 Testo 软件，请在软件中读取设备并保存 .vi2 到监控文件夹', 'success');
+            toast('已启动官方软件：连接并读取温度计后，把数据保存为 .vi2 或导出 CSV 到监控文件夹，本工具会自动导入', 'success');
         }
     } catch (e) {
         toast(`启动失败: ${e.message}`, 'error');
@@ -735,7 +757,9 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-confirm-read').addEventListener('click', confirmRead);
     document.getElementById('btn-import-vi2').addEventListener('click', importVi2);
     document.getElementById('btn-watch').addEventListener('click', startWatch);
+    document.getElementById('btn-open-folder').addEventListener('click', openExportFolder);
     document.getElementById('btn-detect-comsoft').addEventListener('click', detectComsoft);
+    prefillExportFolder();
 
     // Step 4
     document.getElementById('btn-export').addEventListener('click', exportExcel);
