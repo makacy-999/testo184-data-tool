@@ -376,6 +376,47 @@ async function importVi2() {
 // ─── Step 2: Testo 软件联动（目录监控，新 .vi2 自动导入） ──────────────────
 let watchTimer = null;
 
+async function detectComsoft() {
+    const list = document.getElementById('comsoft-list');
+    const btn = document.getElementById('btn-detect-comsoft');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="loading-spinner"></span> 检测中...'; }
+    try {
+        const r = await api('/api/comsoft/detect');
+        if (r.platform !== 'win32') {
+            if (list) list.innerHTML = '<span style="color:#c62828">自动调用仅支持 Windows。Mac 请手动打开 Testo 软件读取并保存 .vi2，本工具会自动导入。</span>';
+            return;
+        }
+        if (!r.softwares || r.softwares.length === 0) {
+            if (list) list.innerHTML = '<span style="color:#c62828">未在电脑上找到 Testo/ComSoft 软件。请确认已安装，或手动打开软件。也支持直接用上方的「导入 .vi2」。</span>';
+            return;
+        }
+        const items = r.softwares.map(sw =>
+            `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;flex-wrap:wrap">
+                <span style="color:#2e7d32">✔ ${sw.name}</span>
+                ${sw.exe ? `<button class="btn btn-sm" style="padding:4px 12px" onclick="launchComsoft('${sw.exe.replace(/\\/g, '\\\\')}')">▶ 启动</button>` : ''}
+                <span style="color:#999;font-size:12px">${sw.location || ''}</span>
+            </div>`).join('');
+        if (list) list.innerHTML = '<b>检测到以下 Testo 软件：</b><br>' + items;
+        // 同时启动第一个
+        if (r.softwares[0].exe) await launchComsoft(r.softwares[0].exe);
+    } catch (e) {
+        if (list) list.innerHTML = `<span style="color:#c62828">检测失败: ${e.message}</span>`;
+    } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '🔍 一键调用 Testo 软件'; }
+    }
+}
+
+async function launchComsoft(exe) {
+    try {
+        const r = await api('/api/comsoft/launch', { method: 'POST', body: { exe } });
+        if (r.ok) {
+            toast('已启动 Testo 软件，请在软件中读取设备并保存 .vi2 到监控文件夹', 'success');
+        }
+    } catch (e) {
+        toast(`启动失败: ${e.message}`, 'error');
+    }
+}
+
 async function startWatch() {
     const dirEl = document.getElementById('watch-dir');
     const dir = dirEl ? dirEl.value.trim() : '';
@@ -410,6 +451,14 @@ async function pollWatchStatus() {
     if (!state.sessionId) return;
     try {
         const r = await api(`/api/sessions/${state.sessionId}/watch-status`);
+        const diag = document.getElementById('watch-diag');
+        if (diag) {
+            if (r.new_files_seen && r.new_files_seen.length) {
+                diag.innerHTML = r.new_files_seen.map(f =>
+                    `⚠️ 发现新文件 <b>${f.file}</b>（${(f.size/1024).toFixed(1)} KB）—— ${f.note}`
+                ).join('<br>');
+            }
+        }
         if (r.new_imports && r.new_imports.length) {
             for (const im of r.new_imports) {
                 if (im.ok) {
@@ -673,6 +722,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-confirm-read').addEventListener('click', confirmRead);
     document.getElementById('btn-import-vi2').addEventListener('click', importVi2);
     document.getElementById('btn-watch').addEventListener('click', startWatch);
+    document.getElementById('btn-detect-comsoft').addEventListener('click', detectComsoft);
 
     // Step 4
     document.getElementById('btn-export').addEventListener('click', exportExcel);

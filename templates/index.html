@@ -177,8 +177,11 @@
                             <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
                                 <input type="text" id="watch-dir" class="input" placeholder="Testo 软件保存 .vi2 的文件夹，如 C:\Users\你\Desktop\testo导出" style="flex:1;min-width:220px">
                                 <button class="btn btn-primary" id="btn-watch">🔄 开始监控</button>
+                                <button class="btn" id="btn-detect-comsoft">🔍 一键调用 Testo 软件</button>
                             </div>
+                            <div id="comsoft-list" style="margin-top:10px;font-size:13px"></div>
                             <div id="watch-status" style="margin-top:10px;font-size:13px;color:#666">未启动监控</div>
+                            <div id="watch-diag" style="margin-top:8px;font-size:12px;color:#b26a00;line-height:1.7"></div>
                             <details style="margin-top:12px;font-size:13px;color:#666">
                                 <summary style="cursor:pointer">不知道填哪个文件夹？点开看操作指引</summary>
                                 <div style="margin-top:8px;line-height:1.8;padding:10px;background:#f7f9fb;border-radius:8px">

@@ -1139,12 +1139,38 @@ def _watch_loop(session_id, path, stop_event):
             pass
     w["files"] = snap
     w["pending"] = {}
+    # 全量文件快照（诊断用：能看到 Testo 软件保存的任何新文件）
+    try:
+        w["all_files"] = {f: os.path.getsize(os.path.join(path, f))
+                          for f in os.listdir(path)
+                          if os.path.isfile(os.path.join(path, f))}
+    except OSError:
+        w["all_files"] = {}
+    w["new_files_seen"] = []
     w["ready"] = True
     while not stop_event.wait(2.5):
         w = WATCHERS.get(session_id)
         if w is None:
             return
         try:
+            # 全量快照：任何新出现的文件都记录（诊断）
+            try:
+                current_all = {f: os.path.getsize(os.path.join(path, f))
+                               for f in os.listdir(path)
+                               if os.path.isfile(os.path.join(path, f))}
+            except OSError:
+                current_all = {}
+            for f, size in current_all.items():
+                if f in w["all_files"]:
+                    continue
+                w["all_files"][f] = size
+                if not f.lower().endswith(".vi2"):
+                    # 不是 .vi2 的新文件 → 记入诊断（可能是 Testo 保存的其他格式）
+                    seen = w["new_files_seen"]
+                    if len(seen) < 30 and f not in [x.get("file") for x in seen]:
+                        seen.append({"file": f, "size": size,
+                                     "note": "新文件但不是 .vi2/OLE2 数据格式，未导入"})
+            # 数据文件检测
             current = {}
             for f in _list_data_files(path):
                 try:
@@ -1201,11 +1227,14 @@ def watch_folder(session_id):
 def watch_status(session_id):
     w = WATCHERS.get(session_id)
     if not w:
-        return jsonify({"watching": False, "new_imports": []})
+        return jsonify({"watching": False, "new_imports": [], "new_files_seen": []})
     results = w["results"]
     w["results"] = []
+    seen = w.get("new_files_seen", [])
+    w["new_files_seen"] = []
     return jsonify({"watching": True, "path": w["path"],
-                    "ready": w.get("ready", False), "new_imports": results})
+                    "ready": w.get("ready", False), "new_imports": results,
+                    "new_files_seen": seen})
 
 
 @app.route("/api/sessions/<session_id>/watch-stop", methods=["POST"])
@@ -1266,9 +1295,79 @@ def _find_testo_software():
     return results
 
 
+def _find_testo_exes():
+    """在常见安装目录中搜索 Testo/ComSoft 的可执行文件（供一键启动）"""
+    exes = []
+    if sys.platform != "win32":
+        return exes
+    roots = []
+    for env in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "LOCALAPPDATA", "APPDATA"):
+        base = os.environ.get(env)
+        if not base:
+            continue
+        for sub in ("Testo", "testo", "ComSoft", "Comsoft"):
+            roots.append(os.path.join(base, sub))
+    for root_dir in roots:
+        if not os.path.isdir(root_dir):
+            continue
+        for root, dirs, files in os.walk(root_dir):
+            if root.count(os.sep) - root_dir.count(os.sep) > 3:
+                dirs[:] = []
+                continue
+            for f in files:
+                fl = f.lower()
+                if fl.endswith(".exe") and ("comsoft" in fl or "testo" in fl):
+                    exes.append(os.path.join(root, f))
+    return exes
+
+
 @app.route("/api/comsoft/detect", methods=["GET"])
 def comsoft_detect():
-    return jsonify({"platform": sys.platform, "softwares": _find_testo_software()})
+    softwares = _find_testo_software()
+    exes = _find_testo_exes()
+    # 合并去重：注册表结果 + 目录扫描结果
+    known_paths = set()
+    for sw in softwares:
+        known_paths.add(sw.get("location", "").lower())
+    for e in exes:
+        # exe 已在某软件目录下则跳过
+        if any(e.lower().startswith(p) for p in known_paths if p):
+            continue
+        softwares.append({"name": os.path.basename(e), "location": os.path.dirname(e), "exe": e})
+    return jsonify({"platform": sys.platform, "softwares": softwares})
+
+
+@app.route("/api/comsoft/launch", methods=["POST"])
+def comsoft_launch():
+    """一键启动电脑上的 Testo / ComSoft 软件（仅 Windows）"""
+    data = request.get_json(silent=True) or {}
+    target = (data.get("exe") or "").strip().strip('"')
+    if not target:
+        # 没给路径就自动找第一个
+        exes = _find_testo_exes()
+        softwares = _find_testo_software()
+        if exes:
+            target = exes[0]
+        elif softwares:
+            for sw in softwares:
+                loc = sw.get("location") or ""
+                if loc and os.path.isdir(loc):
+                    for root, dirs, files in os.walk(loc):
+                        for f in files:
+                            if f.lower().endswith(".exe") and ("comsoft" in f.lower() or "testo" in f.lower()):
+                                target = os.path.join(root, f)
+                                break
+                        if target:
+                            break
+                if target:
+                    break
+    if not target or not os.path.isfile(target):
+        return jsonify({"error": "未找到 Testo/ComSoft 软件的可执行文件，请手动打开软件"}), 404
+    try:
+        subprocess.Popen([target], close_fds=True)
+        return jsonify({"ok": True, "launched": target})
+    except Exception as e:
+        return jsonify({"error": f"启动失败: {e}"}), 500
 
 
 # ─── API: 导出 Excel ─────────────────────────────────────────────────────────
