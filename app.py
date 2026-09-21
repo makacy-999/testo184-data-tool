@@ -997,56 +997,24 @@ def read_device(session_id):
     })
 
 
-# ─── API: 导入 .vi2 文件 ─────────────────────────────────────────────────────
+# ─── vi2 导入核心（上传路由与目录监控共用） ──────────────────────────────────
 
-@app.route("/api/sessions/<session_id>/import-vi2", methods=["POST"])
-def import_vi2(session_id):
-    """上传一个 .vi2 文件，解析后导入为当前下一个未关联测点的数据"""
-    if not VI2_AVAILABLE:
-        return jsonify({"error": "缺少 vi2 解析库(olefile)，请在启动目录执行 pip install olefile"}), 500
-
-    file = request.files.get("file")
-    if not file:
-        return jsonify({"error": "未收到文件"}), 400
-    if not file.filename.lower().endswith(".vi2"):
-        return jsonify({"error": "仅支持 .vi2 文件"}), 400
-
-    # 保存临时文件
-    tmp_dir = os.path.join(APP_DATA_DIR, "tmp")
-    os.makedirs(tmp_dir, exist_ok=True)
-    tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.vi2")
-    file.save(tmp_path)
-
-    # 需要文件首部是 OLE2 签名
+def _import_vi2_to_session(session_id, path, sample_minutes=None, start_time=None):
+    """把磁盘上的 .vi2 文件解析并导入到会话的下一个未关联测点。
+    返回 (ok: bool, payload: dict)"""
     try:
-        with open(tmp_path, "rb") as fh:
+        with open(path, "rb") as fh:
             sig = fh.read(8)
     except Exception as e:
-        return jsonify({"error": f"读取文件失败: {e}"}), 500
+        return False, {"error": f"读取文件失败: {e}"}
     if sig != b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
-        return jsonify({"error": "不是有效的 .vi2 文件（缺少 OLE 签名）"}), 400
-
-    # 解析
-    sample_minutes = request.form.get("sample_minutes")
+        return False, {"error": "不是有效的 .vi2 文件（缺少 OLE 签名）"}
     try:
-        sample_minutes = float(sample_minutes) if sample_minutes else None
-    except ValueError:
-        sample_minutes = None
-    start_time = request.form.get("start_time") or None
-
-    try:
-        parsed = parse_vi2(tmp_path, sample_minutes=sample_minutes, start_time=start_time)
+        parsed = parse_vi2(path, sample_minutes=sample_minutes, start_time=start_time)
     except Exception as e:
-        return jsonify({"error": f"解析 .vi2 失败: {e}"}), 500
-    finally:
-        try:
-            os.remove(tmp_path)
-        except OSError:
-            pass
-
+        return False, {"error": f"解析 .vi2 失败: {e}"}
     if not parsed.get("records"):
-        return jsonify({"error": "文件中未解析到温度数据"}), 400
-
+        return False, {"error": "文件中未解析到温度数据"}
     sn = parsed.get("serial_number", "未知")
     conn = get_db()
     next_point = conn.execute(
@@ -1054,11 +1022,9 @@ def import_vi2(session_id):
         "ORDER BY sort_order LIMIT 1",
         (session_id,)
     ).fetchone()
-
     if not next_point:
         conn.close()
-        return jsonify({"error": "所有测点都已关联设备，请新建会话或增加测点"}), 400
-
+        return False, {"error": "所有测点都已关联设备，请增加测点或新建会话"}
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     for idx, rec in enumerate(parsed["records"], 1):
         conn.execute(
@@ -1067,16 +1033,12 @@ def import_vi2(session_id):
             " record_index, date_val, time_val, temperature, humidity, alarm, raw_data, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (session_id, next_point["point_number"], sn, f"vi2-{sn}",
-             "import.vi2", idx,
+             os.path.basename(path), idx,
              rec["date"], rec["time"], rec["temperature"], None, "",
              json.dumps({"t_code": rec["t_code"], "unit": parsed.get("unit", "°C")}, ensure_ascii=False),
              now)
         )
-
-    conn.execute(
-        "UPDATE measurement_points SET serial_number=? WHERE id=?",
-        (sn, next_point["id"])
-    )
+    conn.execute("UPDATE measurement_points SET serial_number=? WHERE id=?", (sn, next_point["id"]))
     completed = conn.execute(
         "SELECT COUNT(*) as cnt FROM measurement_points WHERE session_id=? AND serial_number!='' AND serial_number IS NOT NULL",
         (session_id,)
@@ -1084,9 +1046,7 @@ def import_vi2(session_id):
     conn.execute("UPDATE sessions SET completed_points=? WHERE id=?", (completed, session_id))
     conn.commit()
     conn.close()
-
-    return jsonify({
-        "ok": True,
+    return True, {
         "point_number": next_point["point_number"],
         "serial_number": sn,
         "record_count": len(parsed["records"]),
@@ -1094,7 +1054,221 @@ def import_vi2(session_id):
         "start_time": parsed["start_time"],
         "completed_points": completed,
         "message": f"测点 {next_point['point_number']} 导入 {len(parsed['records'])} 条数据 (SN: {sn})"
-    })
+    }
+
+
+# ─── API: 导入 .vi2 文件（支持一次选择多个） ─────────────────────────────────
+
+@app.route("/api/sessions/<session_id>/import-vi2", methods=["POST"])
+def import_vi2(session_id):
+    """上传一个或多个 .vi2 文件，依次导入到未关联测点"""
+    if not VI2_AVAILABLE:
+        return jsonify({"error": "缺少 vi2 解析库(olefile)，请执行 pip install olefile"}), 500
+    files = request.files.getlist("file")
+    if not files:
+        return jsonify({"error": "未收到文件"}), 400
+    tmp_dir = os.path.join(APP_DATA_DIR, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    sample_minutes = request.form.get("sample_minutes")
+    try:
+        sample_minutes = float(sample_minutes) if sample_minutes else None
+    except (TypeError, ValueError):
+        sample_minutes = None
+    start_time = request.form.get("start_time") or None
+    results = []
+    for file in files:
+        tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.vi2")
+        try:
+            file.save(tmp_path)
+            ok, payload = _import_vi2_to_session(session_id, tmp_path, sample_minutes, start_time)
+            entry = dict(payload)
+            entry["ok"] = ok
+            entry["file"] = file.filename
+            results.append(entry)
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+    ok_any = any(r.get("ok") for r in results)
+    if ok_any:
+        msg = "；".join(r.get("message") or r.get("error", "") for r in results)
+    else:
+        msg = results[0].get("error", "导入失败") if results else "导入失败"
+    return jsonify({"ok": ok_any, "results": results, "message": msg})
+
+
+# ─── Testo / ComSoft 软件联动：监控导出目录，新 .vi2 自动导入转 Excel ─────────
+
+WATCHERS = {}  # session_id -> {"path", "stop", "results", "files", "pending", "ready"}
+
+
+def _list_data_files(path):
+    """列出目录下可作为数据导入的文件（.vi2 及无扩展名的 OLE2 存档）"""
+    out = []
+    try:
+        for f in os.listdir(path):
+            fp = os.path.join(path, f)
+            if not os.path.isfile(fp):
+                continue
+            if f.lower().endswith(".vi2"):
+                out.append(fp)
+            else:
+                # Testo 软件导出的存档可能无扩展名：按 OLE2 签名识别
+                try:
+                    with open(fp, "rb") as fh:
+                        if fh.read(8) == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+                            out.append(fp)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+    return out
+
+
+def _watch_loop(session_id, path, stop_event):
+    w = WATCHERS.get(session_id)
+    if w is None:
+        return
+    # 初始快照：已存在的文件不重复导入
+    snap = {}
+    for f in _list_data_files(path):
+        try:
+            snap[f] = os.path.getsize(f)
+        except OSError:
+            pass
+    w["files"] = snap
+    w["pending"] = {}
+    w["ready"] = True
+    while not stop_event.wait(2.5):
+        w = WATCHERS.get(session_id)
+        if w is None:
+            return
+        try:
+            current = {}
+            for f in _list_data_files(path):
+                try:
+                    current[f] = os.path.getsize(f)
+                except OSError:
+                    continue
+            for f, size in current.items():
+                if f in w["files"]:
+                    continue
+                if w["pending"].get(f) == size:
+                    # 大小两轮一致，文件已写完 → 自动导入
+                    ok, payload = _import_vi2_to_session(session_id, f)
+                    entry = dict(payload)
+                    entry["ok"] = ok
+                    entry["file"] = os.path.basename(f)
+                    w["results"].append(entry)
+                    w["files"][f] = size
+                    w["pending"].pop(f, None)
+                else:
+                    w["pending"][f] = size
+            for f in list(w["pending"].keys()):
+                if f not in current:
+                    w["pending"].pop(f, None)
+        except Exception:
+            pass
+
+
+def _stop_watcher(session_id):
+    w = WATCHERS.pop(session_id, None)
+    if w:
+        w["stop"].set()
+
+
+@app.route("/api/sessions/<session_id>/watch-folder", methods=["POST"])
+def watch_folder(session_id):
+    """启动目录监控：Testo/ComSoft 软件保存 .vi2 到该目录时自动导入"""
+    data = request.get_json(silent=True) or {}
+    path = (data.get("path") or "").strip().strip('"')
+    if not path or not os.path.isdir(path):
+        return jsonify({"error": f"目录不存在: {path or '(空)'}"}), 400
+    _stop_watcher(session_id)
+    stop = threading.Event()
+    WATCHERS[session_id] = {
+        "path": path, "stop": stop, "results": [],
+        "files": {}, "pending": {}, "ready": False,
+    }
+    t = threading.Thread(target=_watch_loop, args=(session_id, path, stop), daemon=True)
+    WATCHERS[session_id]["thread"] = t
+    t.start()
+    return jsonify({"ok": True, "watching": path})
+
+
+@app.route("/api/sessions/<session_id>/watch-status", methods=["GET"])
+def watch_status(session_id):
+    w = WATCHERS.get(session_id)
+    if not w:
+        return jsonify({"watching": False, "new_imports": []})
+    results = w["results"]
+    w["results"] = []
+    return jsonify({"watching": True, "path": w["path"],
+                    "ready": w.get("ready", False), "new_imports": results})
+
+
+@app.route("/api/sessions/<session_id>/watch-stop", methods=["POST"])
+def watch_stop(session_id):
+    _stop_watcher(session_id)
+    return jsonify({"ok": True})
+
+
+def _find_testo_software():
+    """Windows 上在注册表查找已安装的 Testo / ComSoft 软件"""
+    results = []
+    if sys.platform != "win32":
+        return results
+    try:
+        import winreg
+        seen = set()
+        for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+            for wow in (winreg.KEY_WOW64_32KEY, winreg.KEY_WOW64_64KEY, 0):
+                try:
+                    key = winreg.OpenKey(root, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+                                         0, winreg.KEY_READ | wow)
+                except OSError:
+                    continue
+                i = 0
+                while True:
+                    try:
+                        sub = winreg.EnumKey(key, i)
+                    except OSError:
+                        break
+                    i += 1
+                    try:
+                        sk = winreg.OpenKey(key, sub)
+                        try:
+                            name = str(winreg.QueryValueEx(sk, "DisplayName")[0])
+                        except OSError:
+                            continue
+                        low = name.lower()
+                        if ("comsoft" in low or "testo" in low) and name not in seen:
+                            try:
+                                loc = str(winreg.QueryValueEx(sk, "InstallLocation")[0] or "")
+                            except OSError:
+                                loc = ""
+                            if not loc:
+                                try:
+                                    loc = str(winreg.QueryValueEx(sk, "InstallSource")[0] or "")
+                                except OSError:
+                                    loc = ""
+                            seen.add(name)
+                            results.append({"name": name, "location": loc})
+                    except OSError:
+                        continue
+                try:
+                    winreg.CloseKey(key)
+                except OSError:
+                    pass
+    except Exception:
+        pass
+    return results
+
+
+@app.route("/api/comsoft/detect", methods=["GET"])
+def comsoft_detect():
+    return jsonify({"platform": sys.platform, "softwares": _find_testo_software()})
 
 
 # ─── API: 导出 Excel ─────────────────────────────────────────────────────────

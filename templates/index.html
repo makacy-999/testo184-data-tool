@@ -159,12 +159,36 @@
                                 ⚠️ 已检测到设备，但未读取到温度数据。Testo 184 的部分固件需先用官方软件把数据导出为 <code>.vi2</code> 存档，再在下方向上选择该文件导入即可。若你手上已有 <code>.vi2</code> 文件，请直接导入。
                             </div>
                             <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                                <input type="file" id="vi2-file-input" accept=".vi2, .bin, .dat" class="input" style="flex:1;min-width:200px">
+                                <input type="file" id="vi2-file-input" accept=".vi2, .bin, .dat" multiple class="input" style="flex:1;min-width:200px">
                                 <button class="btn btn-success btn-lg" id="btn-import-vi2">
                                     📥 导入并读取数据
                                 </button>
                             </div>
                             <div class="vi2-msg" id="vi2-msg" style="margin-top:10px;font-size:13px;color:#666"></div>
+                        </div>
+
+                        <!-- Testo / ComSoft 软件联动：监控导出目录，自动导入 -->
+                        <div class="comsoft-link" id="comsoft-box" style="margin-top:24px;padding-top:20px;border-top:1px dashed #ddd">
+                            <h3>🔄 Testo 软件联动（全自动模式）</h3>
+                            <p class="card-desc">
+                                温度计数据需官方软件读取时用这一步：插上温度计 → 在 Testo 软件里<b>读取并保存 .vi2</b> 到下面填的文件夹 →
+                                本工具<b>自动抓取、解析并汇总</b>，全程无需手动切换。适合一次读多台设备。
+                            </p>
+                            <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                                <input type="text" id="watch-dir" class="input" placeholder="Testo 软件保存 .vi2 的文件夹，如 C:\Users\你\Desktop\testo导出" style="flex:1;min-width:220px">
+                                <button class="btn btn-primary" id="btn-watch">🔄 开始监控</button>
+                            </div>
+                            <div id="watch-status" style="margin-top:10px;font-size:13px;color:#666">未启动监控</div>
+                            <details style="margin-top:12px;font-size:13px;color:#666">
+                                <summary style="cursor:pointer">不知道填哪个文件夹？点开看操作指引</summary>
+                                <div style="margin-top:8px;line-height:1.8;padding:10px;background:#f7f9fb;border-radius:8px">
+                                    1. 建一个空文件夹（如桌面上的「testo导出」），把路径填到上面；<br>
+                                    2. 打开你电脑上能读这台温度计的 Testo 软件（ComSoft 系列），插上设备读取；<br>
+                                    3. 在 Testo 软件里把数据「保存 / 导出存档」为 .vi2，保存到刚才那个文件夹；<br>
+                                    4. 本工具检测到新文件后会自动导入并提示，多台设备依次保存即可；<br>
+                                    5. 全部导完后点「下一步：数据汇总」导出 Excel。
+                                </div>
+                            </details>
                         </div>
                     </div>
                 </div>

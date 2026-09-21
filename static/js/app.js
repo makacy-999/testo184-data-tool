@@ -309,13 +309,13 @@ async function confirmRead() {
     }
 }
 
-// ─── Step 2: 导入 .vi2 文件 ─────────────────────────────────────────────
+// ─── Step 2: 导入 .vi2 文件（支持一次多选） ─────────────────────────────
 async function importVi2() {
     const input = document.getElementById('vi2-file-input');
-    const file = input.files && input.files[0];
+    const files = input.files;
     const msg = document.getElementById('vi2-msg');
     const btn = document.getElementById('btn-import-vi2');
-    if (!file) {
+    if (!files || files.length === 0) {
         toast('请先选择 .vi2 文件', 'warning');
         return;
     }
@@ -326,10 +326,10 @@ async function importVi2() {
 
     btn.disabled = true;
     btn.innerHTML = '<span class="loading-spinner"></span> 解析中...';
-    if (msg) msg.textContent = '正在解析 .vi2 文件...';
+    if (msg) { msg.style.color = '#666'; msg.textContent = `正在解析 ${files.length} 个 .vi2 文件...`; }
 
     const form = new FormData();
-    form.append('file', file);
+    for (const f of files) form.append('file', f);
 
     try {
         const result = await api(`/api/sessions/${state.sessionId}/import-vi2`, {
@@ -338,35 +338,95 @@ async function importVi2() {
             isForm: true,
         });
 
-        state.points[state.currentPointIndex].serial_number = result.serial_number;
-        state.points[state.currentPointIndex].status = 'completed';
-        state.completedDevices.push({
-            point_number: result.point_number,
-            serial_number: result.serial_number,
-            record_count: result.record_count,
-        });
-        state.totalRecords += result.record_count;
-        state.currentPointIndex++;
-
-        if (msg) {
-            msg.style.color = '#2e7d32';
-            msg.textContent = `${result.message}｜采样间隔 ${result.sample_minutes} 分钟｜起始 ${result.start_time}`;
+        if (result.ok) {
+            for (const r of (result.results || [])) {
+                if (r.ok) {
+                    state.completedDevices.push({
+                        point_number: r.point_number,
+                        serial_number: r.serial_number,
+                        record_count: r.record_count,
+                    });
+                    state.totalRecords += r.record_count;
+                    toast(r.message, 'success');
+                } else {
+                    toast(`${r.file}: ${r.error}`, 'error');
+                }
+            }
+            if (msg) {
+                msg.style.color = '#2e7d32';
+                msg.textContent = '✅ ' + result.message;
+            }
+            setStatus(result.message);
+            input.value = '';
+            updateReadUI();
+            loadSession();
+        } else {
+            if (msg) { msg.style.color = '#c62828'; msg.textContent = `❌ ${result.message || '导入失败'}`; }
+            toast(result.message || '导入失败', 'error');
         }
-        toast(result.message, 'success');
-        setStatus(result.message);
-
-        // 清空选择，方便导入下一个
-        input.value = '';
-        btn.disabled = false;
-        btn.innerHTML = '📥 导入并读取数据';
-        updateReadUI();
     } catch (e) {
-        btn.disabled = false;
-        btn.innerHTML = '📥 导入并读取数据';
         if (msg) { msg.style.color = '#c62828'; msg.textContent = `导入失败: ${e.message}`; }
         toast(`导入失败: ${e.message}`, 'error');
-        setStatus('导入失败');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '📥 导入并读取数据';
     }
+}
+
+// ─── Step 2: Testo 软件联动（目录监控，新 .vi2 自动导入） ──────────────────
+let watchTimer = null;
+
+async function startWatch() {
+    const dirEl = document.getElementById('watch-dir');
+    const dir = dirEl ? dirEl.value.trim() : '';
+    const st = document.getElementById('watch-status');
+    if (!dir) { toast('请先填写 Testo 软件保存 .vi2 的文件夹路径', 'warning'); return; }
+    if (!state.sessionId) { toast('请先在第一步创建会话', 'warning'); return; }
+    const btn = document.getElementById('btn-watch');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> 启动中...';
+    try {
+        const r = await api(`/api/sessions/${state.sessionId}/watch-folder`, {
+            method: 'POST', body: { path: dir }
+        });
+        if (st) {
+            st.style.color = '#2e7d32';
+            st.textContent = `🔄 正在监控 ${dir} —— 在 Testo 软件里读取设备并保存 .vi2 到该文件夹，数据会自动导入`;
+        }
+        toast('已开始监控文件夹', 'success');
+        btn.innerHTML = '🔄 监控中...';
+        if (watchTimer) clearInterval(watchTimer);
+        watchTimer = setInterval(pollWatchStatus, 3000);
+    } catch (e) {
+        if (st) { st.style.color = '#c62828'; st.textContent = `启动监控失败: ${e.message}`; }
+        toast(e.message || '启动监控失败', 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🔄 开始监控';
+    }
+}
+
+async function pollWatchStatus() {
+    if (!state.sessionId) return;
+    try {
+        const r = await api(`/api/sessions/${state.sessionId}/watch-status`);
+        if (r.new_imports && r.new_imports.length) {
+            for (const im of r.new_imports) {
+                if (im.ok) {
+                    state.completedDevices.push({
+                        point_number: im.point_number,
+                        serial_number: im.serial_number,
+                        record_count: im.record_count,
+                    });
+                    state.totalRecords += im.record_count;
+                    toast(`自动导入 ${im.file}: ${im.record_count} 条 (SN ${im.serial_number})`, 'success');
+                } else {
+                    toast(`自动导入失败 ${im.file}: ${im.error}`, 'error');
+                }
+            }
+            loadSession();
+        }
+    } catch (e) { /* 轮询静默 */ }
 }
 
 // ─── Step 3: 数据汇总 ─────────────────────────────────────────────────────
@@ -612,6 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-scan').addEventListener('click', scanDevice);
     document.getElementById('btn-confirm-read').addEventListener('click', confirmRead);
     document.getElementById('btn-import-vi2').addEventListener('click', importVi2);
+    document.getElementById('btn-watch').addEventListener('click', startWatch);
 
     // Step 4
     document.getElementById('btn-export').addEventListener('click', exportExcel);
