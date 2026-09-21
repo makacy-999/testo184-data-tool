@@ -295,8 +295,11 @@ async function buildSummary() {
         const pts = session.points || [];
         const totalCount = pts.reduce((sum, p) => sum + (p.record_count || 0), 0);
 
-        grid.innerHTML = pts.map(p => `
+        grid.innerHTML = pts.map((p, i) => `
             <div class="summary-item">
+                <label class="summary-check">
+                    <input type="checkbox" class="point-check" data-idx="${i}" ${(p.record_count||0)>0 ? 'checked' : 'disabled'}>
+                </label>
                 <div class="s-point">测点 #${p.point_number}</div>
                 <div class="s-sn">SN: ${p.serial_number || '未设置'}</div>
                 <div class="s-count">${p.record_count || 0} 条数据</div>
@@ -320,19 +323,38 @@ async function buildSummary() {
             </div>
         `;
 
+        // 勾选事件：更新导出按钮状态
+        document.querySelectorAll('.point-check').forEach(cb => {
+            cb.addEventListener('change', updateExportState);
+        });
+
         // 更新 Step 4 数据
         document.getElementById('export-total-points').textContent = pts.length;
         document.getElementById('export-total-records').textContent = totalCount;
         document.getElementById('export-sheets').textContent = sheetCount;
-        document.getElementById('btn-export').disabled = totalCount === 0;
+        updateExportState();
 
         // 隐藏明细
         document.getElementById('summary-detail').style.display = 'none';
 
         goToStep(3);
-        setStatus('数据汇总完成，可以导出');
+        setStatus('数据汇总完成，可勾选设备后导出');
     } catch (e) {
         toast(`加载汇总失败: ${e.message}`, 'error');
+    }
+}
+
+// 根据勾选情况更新导出相关按钮状态
+function updateExportState() {
+    const checked = document.querySelectorAll('.point-check:checked').length;
+    const hasData = checked > 0;
+    document.getElementById('btn-export').disabled = !hasData;
+    document.getElementById('btn-to-export').disabled = !hasData;
+    const hint = document.getElementById('export-hint');
+    if (hint) {
+        hint.textContent = hasData
+            ? `已选择 ${checked} 台设备用于导出`
+            : '尚未选择设备，请勾选有数据的设备';
     }
 }
 
@@ -378,7 +400,14 @@ async function exportExcel() {
     setStatus('正在生成 Excel 文件...');
 
     try {
-        const res = await api(`/api/sessions/${state.sessionId}/export`, { method: 'POST' });
+        // 收集勾选的测点编号
+        const checks = document.querySelectorAll('.point-check:checked');
+        const selected = Array.from(checks).map(cb => cb.dataset.idx);
+        const res = await api(`/api/sessions/${state.sessionId}/export`, {
+            method: 'POST',
+            body: JSON.stringify({ selected_indexes: selected }),
+            headers: { 'Content-Type': 'application/json' }
+        });
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -505,12 +534,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Step 3 → Step 4 衔接
     document.getElementById('btn-to-export').addEventListener('click', () => {
-        // 已读取的数据数量
-        const total = document.getElementById('export-total-records').textContent;
-        if (parseInt(total || '0') === 0) {
-            toast('还没有读取到任何数据，请先完成设备读取', 'warning');
+        // 勾选数量
+        const checked = document.querySelectorAll('.point-check:checked').length;
+        if (checked === 0) {
+            toast('请先勾选要导出的设备（有数据的测点会自动勾选）', 'warning');
             return;
         }
+        const hint = document.getElementById('export-hint');
+        if (hint) hint.textContent = `将导出所勾选的 ${checked} 台设备`;
         goToStep(4);
         setStatus('请点击导出 Excel 文件');
     });

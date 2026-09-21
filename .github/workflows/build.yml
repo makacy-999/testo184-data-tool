@@ -28,14 +28,14 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install flask openpyxl pyinstaller
+        run: pip install flask openpyxl pdfplumber pyinstaller
 
       - name: Build executable
         shell: bash
         run: |
           SEP=":"
           if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; fi
-          pyinstaller --name Testo184Tool --onefile \
+          pyinstaller --name Testo184Tool --onefile --noconsole \
             --add-data "templates${SEP}templates" \
             --add-data "static${SEP}static" \
             app.py

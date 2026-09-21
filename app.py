@@ -26,6 +26,13 @@ except ImportError:
     print("❌ 缺少 openpyxl，请运行: pip install openpyxl")
     sys.exit(1)
 
+# PDF 报告解析（Testo 184 内置 measurement report.pdf）
+try:
+    import pdfplumber
+    PDFPLUMBER_AVAILABLE = True
+except ImportError:
+    PDFPLUMBER_AVAILABLE = False
+
 
 # ─── 配置 ────────────────────────────────────────────────────────────────────
 
@@ -192,16 +199,21 @@ class DeviceDetector:
                     "error": None,
                 }
                 csv_files = []
+                pdf_files = []
                 try:
                     for root, dirs, files in os.walk(mp):
                         dirs[:] = [d for d in dirs if not d.startswith(".")]
                         for f in files:
-                            if f.lower().endswith(".csv"):
+                            fl = f.lower()
+                            if fl.endswith(".csv"):
                                 csv_files.append(os.path.join(root, f))
+                            elif fl.endswith(".pdf"):
+                                pdf_files.append(os.path.join(root, f))
                 except (OSError, PermissionError) as e:
                     device["error"] = f"读取目录失败: {e}"
 
                 device["csv_files"] = csv_files
+                device["pdf_files"] = [os.path.basename(f) for f in pdf_files]
                 all_records = []
                 device_info = {}
 
@@ -214,6 +226,20 @@ class DeviceDetector:
                         device_info.update(info)
                     except Exception as e:
                         device["error"] = f"解析 {os.path.basename(csv_file)} 失败: {e}"
+
+                # 如果没有 CSV，或 CSV 为空，尝试从 Testo 报告 PDF 中提取数据（内置报告）
+                if not all_records:
+                    for pdf_file in pdf_files:
+                        try:
+                            headers, records, info = cls.parse_testo_pdf(pdf_file)
+                            if records:
+                                for r in records:
+                                    r["source_file"] = os.path.basename(pdf_file)
+                                all_records.extend(records)
+                                device_info.update(info)
+                                break
+                        except Exception as e:
+                            device["error"] = f"解析 {os.path.basename(pdf_file)} 失败: {e}"
 
                 device["records"] = all_records
                 # 尝试提取序列号：从 CSV 注释行 / 文件名 / 首行元信息
@@ -359,11 +385,100 @@ class DeviceDetector:
         device_info["csv_path"] = csv_path
         return headers, records, device_info
 
+    @staticmethod
+    def parse_testo_pdf(pdf_path):
+        """解析 Testo 184 内置的 measurement report PDF，提取温度数据。
+        Testo 报告 PDF 内通常含测量数据表格（日期/时间/温度/湿度/报警）"""
+        records = []
+        device_info = {}
+        if not PDFPLUMBER_AVAILABLE:
+            raise RuntimeError("未安装 pdfplumber，无法解析 PDF 报告")
+
+        headers_out = None
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages[:10]:  # 最多看前10页
+                tables = page.extract_tables()
+                for table in tables:
+                    if not table or not table[0]:
+                        continue
+                    # 尝试定位表头行
+                    header_idx = 0
+                    for i, row in enumerate(table[:4]):
+                        joined = " ".join(str(c).lower() for c in row if c)
+                        if any(k in joined for k in ["date", "日期", "datum"]):
+                            header_idx = i
+                            break
+                    headers = [str(c).strip() if c else "" for c in table[header_idx]]
+                    # 列映射
+                    col_map = {}
+                    for idx, h in enumerate(headers):
+                        hl = h.lower()
+                        if "date" in hl or "日期" in hl:
+                            col_map["date"] = idx
+                        elif "time" in hl or "时间" in hl:
+                            col_map["time"] = idx
+                        elif "temp" in hl or "温度" in hl:
+                            col_map["temperature"] = idx
+                        elif "humid" in hl or "湿度" in hl:
+                            col_map["humidity"] = idx
+                        elif "alarm" in hl or "报警" in hl or "grenzwert" in hl:
+                            col_map["alarm"] = idx
+                    if not col_map.get("temperature") and not col_map.get("humidity"):
+                        continue
+                    headers_out = headers
+                    for row in table[header_idx + 1:]:
+                        if not row or all(not c for c in row):
+                            continue
+                        rec = {}
+                        for field, ci in col_map.items():
+                            if ci < len(row):
+                                rec[field] = str(row[ci]).strip() if row[ci] is not None else ""
+                        if rec and (rec.get("temperature") or rec.get("humidity")):
+                            rec["_raw"] = {headers[i]: (str(row[i]).strip() if i < len(row) and row[i] is not None else "")
+                                           for i in range(len(headers))}
+                            records.append(rec)
+
+        if not records:
+            # 回退：表格提取失败时，用文本行解析（针对无表格线的 PDF）
+            try:
+                with pdfplumber.open(pdf_path) as pdf:
+                    for page in pdf.pages[:10]:
+                        text = page.extract_text() or ""
+                        for line in text.splitlines():
+                            line_s = line.strip()
+                            if not line_s:
+                                continue
+                            import re
+                            # 例: 2026-09-20 08:00:00 5.2 42.0 Normal
+                            m = re.match(
+                                r"^(\d{4}[-/]\d{1,2}[-/]\d{1,2})"
+                                r"\s+(\d{1,2}:\d{2}(?::\d{2})?)"
+                                r"\s+([-\d.]+\s*°?C?)\s+([-\d.]+)"
+                                r"(?:\s+(.+))?$", line_s)
+                            if m:
+                                records.append({
+                                    "date": m.group(1),
+                                    "time": m.group(2),
+                                    "temperature": m.group(3).replace("°C", "").strip(),
+                                    "humidity": m.group(4),
+                                    "alarm": m.group(5) or "",
+                                    "_raw": {"Temperature": m.group(3), "Humidity": m.group(4)},
+                                })
+            except Exception:
+                pass
+
+        if not records:
+            raise ValueError("PDF 中未找到测量数据表格")
+
+        device_info["pdf_file"] = os.path.basename(pdf_path)
+        device_info["source"] = "pdf_report"
+        return headers_out or [], records, device_info
+
 
 # ─── Excel 导出 ─────────────────────────────────────────────────────────────
 
-def export_excel(session_id):
-    """将指定会话的数据导出为 Excel"""
+def export_excel(session_id, selected_indexes=None):
+    """将指定会话的数据导出为 Excel（selected_indexes 为可选勾选的测点列表）"""
     conn = get_db()
     session = conn.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
     if not session:
@@ -374,6 +489,10 @@ def export_excel(session_id):
         "SELECT * FROM measurement_points WHERE session_id=? ORDER BY sort_order",
         (session_id,)
     ).fetchall()
+
+    # 若指定了勾选的测点下标，则仅导出这些测点
+    if selected_indexes:
+        points = [points[int(i)] for i in selected_indexes if int(i) < len(points)]
 
     HEADER_FONT = Font(bold=True, size=11, color="FFFFFF")
     HEADER_FILL = PatternFill(start_color="2F75B5", end_color="2F75B5", fill_type="solid")
@@ -719,6 +838,8 @@ def detect_device(session_id):
                     "serial_number": sn,
                     "record_count": len(dev["records"]),
                     "csv_files": [os.path.basename(f) for f in dev["csv_files"]],
+                    "pdf_files": dev.get("pdf_files", []),
+                    "source": "CSV" if dev["csv_files"] else ("PDF报告" if dev.get("pdf_files") else "无"),
                     "preview": preview,
                     "error": dev.get("error"),
                 }
@@ -830,7 +951,9 @@ def read_device(session_id):
 
 @app.route("/api/sessions/<session_id>/export", methods=["POST"])
 def export_data(session_id):
-    filepath, filename = export_excel(session_id)
+    data = request.get_json(silent=True) or {}
+    selected = data.get("selected_indexes")
+    filepath, filename = export_excel(session_id, selected)
     if filepath is None:
         return jsonify({"error": filename}), 400
     return send_file(filepath, as_attachment=True, download_name=filename)
@@ -878,4 +1001,4 @@ if __name__ == "__main__":
             pass
 
     threading.Thread(target=_open_browser, daemon=True).start()
-    app.run(host="0.0.0.0", port=8000, debug=False)
+    app.run(host="0.0.0.0", port=int(os.environ.get("TESTO_PORT", 8000)), debug=False)
