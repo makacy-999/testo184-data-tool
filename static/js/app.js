@@ -16,8 +16,21 @@ const state = {
 
 // ─── API 工具 ──────────────────────────────────────────────────────────────
 async function api(url, options = {}) {
+    const headers = { 'Content-Type': 'application/json' };
+    // 若传 FormData，不设置 JSON header 也不 JSON 序列化
+    if (options.isForm) {
+        delete options.isForm;
+        const res = await fetch(url, {
+            ...options,
+            body: options.body, // FormData / File 等直接传
+        });
+        if (url.endsWith('/export')) return res;
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
+        return data;
+    }
     const res = await fetch(url, {
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         ...options,
         body: options.body ? JSON.stringify(options.body) : undefined,
     });
@@ -285,6 +298,66 @@ async function confirmRead() {
     }
 }
 
+// ─── Step 2: 导入 .vi2 文件 ─────────────────────────────────────────────
+async function importVi2() {
+    const input = document.getElementById('vi2-file-input');
+    const file = input.files && input.files[0];
+    const msg = document.getElementById('vi2-msg');
+    const btn = document.getElementById('btn-import-vi2');
+    if (!file) {
+        toast('请先选择 .vi2 文件', 'warning');
+        return;
+    }
+    if (!state.sessionId) {
+        toast('请先在第一步创建会话', 'warning');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="loading-spinner"></span> 解析中...';
+    if (msg) msg.textContent = '正在解析 .vi2 文件...';
+
+    const form = new FormData();
+    form.append('file', file);
+
+    try {
+        const result = await api(`/api/sessions/${state.sessionId}/import-vi2`, {
+            method: 'POST',
+            body: form,
+            isForm: true,
+        });
+
+        state.points[state.currentPointIndex].serial_number = result.serial_number;
+        state.points[state.currentPointIndex].status = 'completed';
+        state.completedDevices.push({
+            point_number: result.point_number,
+            serial_number: result.serial_number,
+            record_count: result.record_count,
+        });
+        state.totalRecords += result.record_count;
+        state.currentPointIndex++;
+
+        if (msg) {
+            msg.style.color = '#2e7d32';
+            msg.textContent = `${result.message}｜采样间隔 ${result.sample_minutes} 分钟｜起始 ${result.start_time}`;
+        }
+        toast(result.message, 'success');
+        setStatus(result.message);
+
+        // 清空选择，方便导入下一个
+        input.value = '';
+        btn.disabled = false;
+        btn.innerHTML = '📥 导入并读取数据';
+        updateReadUI();
+    } catch (e) {
+        btn.disabled = false;
+        btn.innerHTML = '📥 导入并读取数据';
+        if (msg) { msg.style.color = '#c62828'; msg.textContent = `导入失败: ${e.message}`; }
+        toast(`导入失败: ${e.message}`, 'error');
+        setStatus('导入失败');
+    }
+}
+
 // ─── Step 3: 数据汇总 ─────────────────────────────────────────────────────
 async function buildSummary() {
     try {
@@ -527,6 +600,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Step 2
     document.getElementById('btn-scan').addEventListener('click', scanDevice);
     document.getElementById('btn-confirm-read').addEventListener('click', confirmRead);
+    document.getElementById('btn-import-vi2').addEventListener('click', importVi2);
 
     // Step 4
     document.getElementById('btn-export').addEventListener('click', exportExcel);

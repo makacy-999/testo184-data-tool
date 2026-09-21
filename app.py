@@ -18,6 +18,13 @@ from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, send_file
 
+# .vi2 专有格式解析（Testo ComSoft 存档）
+try:
+    from vi2_parser import parse_vi2
+    VI2_AVAILABLE = True
+except ImportError:
+    VI2_AVAILABLE = False
+
 try:
     import openpyxl
     from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -200,6 +207,7 @@ class DeviceDetector:
                 }
                 csv_files = []
                 pdf_files = []
+                vi2_files = []
                 try:
                     for root, dirs, files in os.walk(mp):
                         dirs[:] = [d for d in dirs if not d.startswith(".")]
@@ -209,11 +217,14 @@ class DeviceDetector:
                                 csv_files.append(os.path.join(root, f))
                             elif fl.endswith(".pdf"):
                                 pdf_files.append(os.path.join(root, f))
+                            elif fl.endswith(".vi2"):
+                                vi2_files.append(os.path.join(root, f))
                 except (OSError, PermissionError) as e:
                     device["error"] = f"读取目录失败: {e}"
 
                 device["csv_files"] = csv_files
                 device["pdf_files"] = [os.path.basename(f) for f in pdf_files]
+                device["vi2_files"] = [os.path.basename(f) for f in vi2_files]
                 all_records = []
                 device_info = {}
 
@@ -240,6 +251,30 @@ class DeviceDetector:
                                 break
                         except Exception as e:
                             device["error"] = f"解析 {os.path.basename(pdf_file)} 失败: {e}"
+
+                # 若仍无数据，尝试解析 .vi2 专有存档（Testo ComSoft 导出格式）
+                if not all_records and VI2_AVAILABLE:
+                    for vi2_file in vi2_files:
+                        try:
+                            parsed = parse_vi2(vi2_file)
+                            if parsed.get("records"):
+                                device_info["serial"] = parsed["serial_number"]
+                                device_info["unit"] = parsed["unit"]
+                                for idx, r in enumerate(parsed["records"], 1):
+                                    all_records.append({
+                                        "date": r["date"],
+                                        "time": r["time"],
+                                        "temperature": r["temperature"],
+                                        "humidity": None,
+                                        "alarm": "",
+                                        "_raw": {"t_code": r["t_code"]},
+                                        "source_file": os.path.basename(vi2_file),
+                                        "record_index": idx,
+                                    })
+                                device_info["_vi2_sample_minutes"] = parsed["sample_minutes"]
+                                break
+                        except Exception as e:
+                            device["error"] = f"解析 {os.path.basename(vi2_file)} 失败: {e}"
 
                 device["records"] = all_records
                 # 尝试提取序列号：从 CSV 注释行 / 文件名 / 首行元信息
@@ -944,6 +979,106 @@ def read_device(session_id):
         "record_count": record_count,
         "completed_points": completed,
         "message": f"测点 {next_point['point_number']} 读取完成，共 {record_count} 条数据"
+    })
+
+
+# ─── API: 导入 .vi2 文件 ─────────────────────────────────────────────────────
+
+@app.route("/api/sessions/<session_id>/import-vi2", methods=["POST"])
+def import_vi2(session_id):
+    """上传一个 .vi2 文件，解析后导入为当前下一个未关联测点的数据"""
+    if not VI2_AVAILABLE:
+        return jsonify({"error": "缺少 vi2 解析库(olefile)，请在启动目录执行 pip install olefile"}), 500
+
+    file = request.files.get("file")
+    if not file:
+        return jsonify({"error": "未收到文件"}), 400
+    if not file.filename.lower().endswith(".vi2"):
+        return jsonify({"error": "仅支持 .vi2 文件"}), 400
+
+    # 保存临时文件
+    tmp_dir = os.path.join(APP_DATA_DIR, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.vi2")
+    file.save(tmp_path)
+
+    # 需要文件首部是 OLE2 签名
+    try:
+        with open(tmp_path, "rb") as fh:
+            sig = fh.read(8)
+    except Exception as e:
+        return jsonify({"error": f"读取文件失败: {e}"}), 500
+    if sig != b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+        return jsonify({"error": "不是有效的 .vi2 文件（缺少 OLE 签名）"}), 400
+
+    # 解析
+    sample_minutes = request.form.get("sample_minutes")
+    try:
+        sample_minutes = float(sample_minutes) if sample_minutes else None
+    except ValueError:
+        sample_minutes = None
+    start_time = request.form.get("start_time") or None
+
+    try:
+        parsed = parse_vi2(tmp_path, sample_minutes=sample_minutes, start_time=start_time)
+    except Exception as e:
+        return jsonify({"error": f"解析 .vi2 失败: {e}"}), 500
+    finally:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
+
+    if not parsed.get("records"):
+        return jsonify({"error": "文件中未解析到温度数据"}), 400
+
+    sn = parsed.get("serial_number", "未知")
+    conn = get_db()
+    next_point = conn.execute(
+        "SELECT * FROM measurement_points WHERE session_id=? AND (serial_number='' OR serial_number IS NULL) "
+        "ORDER BY sort_order LIMIT 1",
+        (session_id,)
+    ).fetchone()
+
+    if not next_point:
+        conn.close()
+        return jsonify({"error": "所有测点都已关联设备，请新建会话或增加测点"}), 400
+
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    for idx, rec in enumerate(parsed["records"], 1):
+        conn.execute(
+            "INSERT INTO device_records "
+            "(session_id, point_number, serial_number, device_name, csv_file, "
+            " record_index, date_val, time_val, temperature, humidity, alarm, raw_data, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (session_id, next_point["point_number"], sn, f"vi2-{sn}",
+             "import.vi2", idx,
+             rec["date"], rec["time"], rec["temperature"], None, "",
+             json.dumps({"t_code": rec["t_code"], "unit": parsed.get("unit", "°C")}, ensure_ascii=False),
+             now)
+        )
+
+    conn.execute(
+        "UPDATE measurement_points SET serial_number=? WHERE id=?",
+        (sn, next_point["id"])
+    )
+    completed = conn.execute(
+        "SELECT COUNT(*) as cnt FROM measurement_points WHERE session_id=? AND serial_number!='' AND serial_number IS NOT NULL",
+        (session_id,)
+    ).fetchone()["cnt"]
+    conn.execute("UPDATE sessions SET completed_points=? WHERE id=?", (completed, session_id))
+    conn.commit()
+    conn.close()
+
+    return jsonify({
+        "ok": True,
+        "point_number": next_point["point_number"],
+        "serial_number": sn,
+        "record_count": len(parsed["records"]),
+        "sample_minutes": parsed["sample_minutes"],
+        "start_time": parsed["start_time"],
+        "completed_points": completed,
+        "message": f"测点 {next_point['point_number']} 导入 {len(parsed['records'])} 条数据 (SN: {sn})"
     })
 
 

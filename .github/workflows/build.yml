@@ -28,7 +28,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install flask openpyxl pdfplumber pyinstaller
+        run: pip install flask openpyxl pdfplumber olefile pyinstaller
 
       - name: Build executable
         shell: bash
@@ -38,6 +38,7 @@ jobs:
           pyinstaller --name Testo184Tool --onefile --noconsole \
             --add-data "templates${SEP}templates" \
             --add-data "static${SEP}static" \
+            --add-data "vi2_parser.py${SEP}." \
             app.py
 
       - name: Rename artifact

@@ -150,6 +150,19 @@
                             <h3>✅ 已读取的设备</h3>
                             <div id="devices-done-list"></div>
                         </div>
+
+                        <!-- .vi2 文件导入（无设备时直接导入导出文件） -->
+                        <div class="vi2-import" id="vi2-import" style="margin-top:28px;padding-top:20px;border-top:1px dashed #ddd">
+                            <h3>📁 直接导入 .vi2 数据文件</h3>
+                            <p class="card-desc">没有把温度计插到电脑上？直接选择用 Testo 软件导出的 <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.vi2</code> 文件，自动读取全部温度数据并转为 Excel。</p>
+                            <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                                <input type="file" id="vi2-file-input" accept=".vi2" class="input" style="flex:1;min-width:200px">
+                                <button class="btn btn-success btn-lg" id="btn-import-vi2">
+                                    📥 导入并读取数据
+                                </button>
+                            </div>
+                            <div class="vi2-msg" id="vi2-msg" style="margin-top:10px;font-size:13px;color:#666"></div>
+                        </div>
                     </div>
                 </div>
             </section>
