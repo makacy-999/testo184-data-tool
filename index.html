@@ -113,13 +113,13 @@ footer .lic{opacity:.8}
   <section class="hero" aria-labelledby="main-title">
     <div class="wrap">
       <div>
-        <span class="tag">v1.6.0 · 免安装 · 数据仅存本机</span>
+        <span class="tag">v1.7.0 · 免安装 · 数据仅存本机</span>
         <h1 id="main-title">把 Testo 184 温度计的数据，<br>变成一张汇总 Excel</h1>
         <p class="lead">逐台插入温度计自动读取，或导入 Testo 软件导出的 <b>.vi2</b> 文件，还可开启<b>软件联动</b>——监控导出文件夹，新存档自动抓取汇总，一键导出包含<b>每测点逐分钟温度记录</b>的汇总工作簿。启动后自动打开浏览器进入页面，内置 Testo 184 报告 PDF 与 .vi2 专有格式解析，设备 SN 支持人工修正，汇总页可勾选设备后导出。macOS 与 Windows 通用。</p>
         <div class="dl-row">
-          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.6.0/Testo184Tool-macOS" target="_blank" rel="noopener noreferrer">下载 macOS 版 <span class="num">29.9 MB · 免安装直接运行</span></a>
-          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.6.0/Testo184Tool-Windows-v1.6.0.zip" target="_blank" rel="noopener noreferrer">下载 Windows 版 <span class="num">11.9 MB · ZIP</span></a>
-          <a class="btn btn-ghost" href="https://github.com/makacy-999/testo184-data-tool/releases/tag/v1.6.0" target="_blank" rel="noopener noreferrer">版本发布页</a>
+          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.7.0/Testo184Tool-macOS" target="_blank" rel="noopener noreferrer">下载 macOS 版 <span class="num">29.9 MB · 免安装直接运行</span></a>
+          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.7.0/Testo184Tool-Windows-v1.7.0.zip" target="_blank" rel="noopener noreferrer">下载 Windows 版 <span class="num">11.9 MB · ZIP</span></a>
+          <a class="btn btn-ghost" href="https://github.com/makacy-999/testo184-data-tool/releases/tag/v1.7.0" target="_blank" rel="noopener noreferrer">版本发布页</a>
         </div>
         <p class="meta-note">下载后直接运行，无需安装 Python。<strong>测量数据 100% 保存在本机</strong>，不上传任何服务器。</p>
       </div>
@@ -236,7 +236,7 @@ cd testo184-data-tool
       <div class="sec-head"><span class="kicker">常见问题</span><h2 id="faq-title">使用前值得知道的几件事</h2></div>
       <details><summary>数据存哪里？会上传吗？</summary><div class="ans">全部保存在你电脑上的本地数据库（程序目录的 <code>data</code> 子目录），不经过任何服务器。导出的 Excel 也只生成在本机，由你自己分发。</div></details>
       <details><summary>支持哪些型号？可以同时插多台吗？</summary><div class="ans">当前版本针对 <strong>Testo 184</strong> 系列设计。读取方式为逐台插入：插一台读一台，读完提示更换下一台——这样测点与设备 SN 的对应关系最可靠，也避免 USB Hub 供电不足导致读数失败。</div></details>
-      <details><summary>温度计读不到数据？用软件联动自动转 Excel。</summary><div class="ans">部分 Testo 184 固件的完整数据需官方软件读取。推荐「软件联动」：① 建一个空文件夹（如桌面「testo导出」），把路径填到工具的联动模式里点「开始监控」；② 插上温度计，在 Testo 软件里读取并保存 <code>.vi2</code> 到该文件夹；③ 本工具检测到新文件即自动解析导入（自动识别 SN、采样间隔、起止时间），多台依次保存即可，最后导出 Excel。也可以直接在「导入 .vi2」处一次多选多个文件手动导入。</div></details>
+      <details><summary>温度计读不到数据？用软件联动自动转 Excel。</summary><div class="ans">部分 Testo 184 固件的完整数据需官方软件读取。推荐「软件联动」：① 建一个空文件夹（如桌面「testo导出」），把路径填到工具的联动模式里点「开始监控」；② 点「一键调用 Testo 软件」自动打开电脑上的 ComSoft/Testo 软件（或手动打开），插上温度计，在软件里读取并保存 <code>.vi2</code> 到该文件夹（保存了其他格式文件时页面会提示文件名和原因）；③ 本工具检测到新文件即自动解析导入（自动识别 SN、采样间隔、起止时间），多台依次保存即可，最后导出 Excel。也可以直接在「导入 .vi2」处一次多选多个文件手动导入。</div></details>
 <details><summary>识别不到温度计怎么办？</summary><div class="ans">点击「扫描 USB 设备」前先确认设备指示灯亮起；macOS 如仍无法识别，换个 USB 口或转接头再扫。接入后系统会把设备识别为一个 U 盘形状的存储设备。</div></details>
       <details><summary>读错了能重读吗？历史能找回吗？</summary><div class="ans">可以。读取确认前可放弃重插；确认后发现错误，可在会话中删除该测点重读。所有历史会话保存在本机数据库，打开应用即可切换查看。</div></details>
       <details><summary>是开源的吗？</summary><div class="ans">是，采用 MIT 协议开源，源码与更新发布在 <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>。</div></details>
@@ -246,7 +246,7 @@ cd testo184-data-tool
 
 <footer>
   <div class="wrap">
-    <div>Testo 184 数据读取汇总工具 · <span class="num">v1.6.0</span> · <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub</a></div>
+    <div>Testo 184 数据读取汇总工具 · <span class="num">v1.7.0</span> · <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub</a></div>
     <div class="lic">MIT License · 数据仅存本机</div>
   </div>
 </footer>
