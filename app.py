@@ -261,31 +261,57 @@ class DeviceDetector:
                     except Exception as e:
                         device["error"] = f"解析 {os.path.basename(csv_file)} 失败: {e}"
 
+                scan_log = []
+
                 # XML / XDP 数据文件（设备盘上的 "configuration_数据.xdp" 等）
                 if not all_records:
                     for xml_file in xml_files:
                         try:
                             headers, records, info = cls.parse_testo_xml(xml_file)
+                            for k, v in info.items():
+                                if v and not device_info.get(k):
+                                    device_info[k] = v
+                            scan_log.append({
+                                "file": os.path.basename(xml_file), "kind": "XML/XDP",
+                                "status": "ok" if records else "empty",
+                                "records": len(records),
+                                "detail": ("提取 %d 条 measurement 记录" % len(records) if records
+                                           else "文件中没有 measurement/record 数据记录"),
+                            })
                             if records:
                                 for r in records:
                                     r["source_file"] = os.path.basename(xml_file)
                                 all_records.extend(records)
-                                device_info.update({k: v for k, v in info.items() if v})
                         except Exception as e:
+                            scan_log.append({"file": os.path.basename(xml_file), "kind": "XML/XDP",
+                                             "status": "error", "records": 0, "detail": str(e)})
                             device["error"] = "解析 %s 失败: %s" % (os.path.basename(xml_file), e)
 
                 # 如果没有 CSV/XML，尝试从 Testo 报告 PDF 中提取数据（内置报告）
+                # 注：图形化报告即使提不出曲线数据，其文本里的 SN 也要保留
                 if not all_records:
                     for pdf_file in pdf_files:
                         try:
                             headers, records, info = cls.parse_testo_pdf(pdf_file)
+                            for k, v in info.items():
+                                if v and not device_info.get(k):
+                                    device_info[k] = v
+                            scan_log.append({
+                                "file": os.path.basename(pdf_file), "kind": "PDF",
+                                "status": "ok" if records else "empty",
+                                "records": len(records),
+                                "detail": (info.get("chart_error") or
+                                           ("曲线提取 %d 点" % len(records) if info.get("source") == "pdf_chart"
+                                            else ("表格提取 %d 行" % len(records) if records else "无数据表格/曲线"))),
+                            })
                             if records:
                                 for r in records:
                                     r["source_file"] = os.path.basename(pdf_file)
                                 all_records.extend(records)
-                                device_info.update(info)
                                 break
                         except Exception as e:
+                            scan_log.append({"file": os.path.basename(pdf_file), "kind": "PDF",
+                                             "status": "error", "records": 0, "detail": str(e)})
                             device["error"] = f"解析 {os.path.basename(pdf_file)} 失败: {e}"
 
                 # 若仍无数据，尝试解析 .vi2 专有存档（Testo ComSoft 导出格式）
@@ -293,6 +319,13 @@ class DeviceDetector:
                     for vi2_file in vi2_files:
                         try:
                             parsed = parse_vi2(vi2_file)
+                            scan_log.append({
+                                "file": os.path.basename(vi2_file), "kind": "vi2",
+                                "status": "ok" if parsed.get("records") else "empty",
+                                "records": len(parsed.get("records") or []),
+                                "detail": ("OLE 存档提取 %d 条" % len(parsed.get("records") or [])
+                                           if parsed.get("records") else "存档中没有数据记录"),
+                            })
                             if parsed.get("records"):
                                 device_info["serial"] = parsed["serial_number"]
                                 device_info["unit"] = parsed["unit"]
@@ -313,6 +346,7 @@ class DeviceDetector:
                             device["error"] = f"解析 {os.path.basename(vi2_file)} 失败: {e}"
 
                 device["records"] = all_records
+                device["scan_log"] = scan_log
                 # 尝试提取序列号：从 CSV 注释行 / 文件名 / 首行元信息
                 for key in ["serial", "serial_number", "sn", "s/n", "序列号", "deviceserialnumber", "serial no."]:
                     if key in device_info and device_info[key]:
@@ -352,6 +386,21 @@ class DeviceDetector:
                                 break
                     except Exception:
                         pass
+                # 从报告/校准证书/xdp 的文本中挖掘 SN（PDF 页眉页脚、证书正文都印有 SN）
+                if not device["serial_number"]:
+                    for f in pdf_files + xml_files:
+                        try:
+                            if f.lower().endswith((".xml", ".xdp")):
+                                txt = open(f, "rb").read(65536).decode("utf-8", "ignore")
+                            else:
+                                with pdfplumber.open(f) as pdf:
+                                    txt = "\n".join((pg.extract_text() or "") for pg in pdf.pages[:3])
+                            sn = DeviceDetector._extract_sn_from_text(txt)
+                            if sn:
+                                device["serial_number"] = sn
+                                break
+                        except Exception:
+                            continue
                 # 如果实在提取不到，拼接设备名作为标识（用户可在界面手动修正）
                 if not device["serial_number"]:
                     device["serial_number"] = device["name"]
@@ -629,6 +678,155 @@ class DeviceDetector:
         return headers, records, info
 
     @staticmethod
+    def _extract_sn_from_text(text):
+        """从任意文本中提取 Testo 设备序列号（Serial Number / S/N / Seriennummer）"""
+        if not text:
+            return ""
+        import re as _re
+        pats = [
+            r"(?:serial(?:\s*number)?|s\s*/\s*n|seriennummer|serial\s*no\.?|序列号)"
+            r"[^0-9A-Za-z]{0,4}[:：]?\s*([0-9]{6,10})",
+            r"\b(440[0-9]{5})\b",   # testo 184 SN 特征段
+        ]
+        for pat in pats:
+            m = _re.search(pat, text, _re.IGNORECASE)
+            if m:
+                return m.group(1)
+        return ""
+
+    @staticmethod
+    def parse_pdf_chart(pdf_path):
+        """从 Testo 图形化 PDF 报告的矢量曲线中提取温度数据。
+
+        设备 U 盘自动生成的 "measurement report" 是曲线图 PDF：没有数据表格，
+        数据藏在矢量路径坐标里。原理：
+        - 曲线点的 y 坐标经左缘温度刻度（等差数值文本）线性映射为温度
+        - x 坐标经底部时间刻度线性映射为时间
+        - 水平/垂直长线段（网格、边框、限值线）被过滤
+        返回 (records, info)。
+        """
+        import re as _re
+        from datetime import datetime as _dtm, timedelta as _td
+
+        with pdfplumber.open(pdf_path) as pdf:
+            page = pdf.pages[0]
+            words = page.extract_words() or []
+
+            # ── 温度刻度：左缘数值词按 x 聚类，找单调等差的一列 ──
+            nums = []
+            for w in words:
+                t = w["text"].strip().replace(",", ".")
+                if _re.fullmatch(r"-?\d+(?:\.\d+)?", t):
+                    try:
+                        v = float(t)
+                    except ValueError:
+                        continue
+                    nums.append({"v": v, "x": (w["x0"] + w["x1"]) / 2,
+                                 "y": (w["top"] + w["bottom"]) / 2})
+            temp_axis = None
+            buckets = {}
+            for n in nums:
+                buckets.setdefault(round(n["x"] / 6), []).append(n)
+            for _, grp in sorted(buckets.items(), key=lambda kv: kv[1][0]["x"]):
+                if len(grp) < 3:
+                    continue
+                grp.sort(key=lambda n: n["y"])
+                vals = [n["v"] for n in grp]
+                mono = (all(vals[i] < vals[i + 1] for i in range(len(vals) - 1))
+                        or all(vals[i] > vals[i + 1] for i in range(len(vals) - 1)))
+                if not mono:
+                    continue
+                diffs = [abs(vals[i + 1] - vals[i]) for i in range(len(vals) - 1)]
+                base = max(diffs)
+                if base <= 0 or min(diffs) < base * 0.7:
+                    continue
+                temp_axis = grp  # 最左的合格刻度列
+                break
+            if temp_axis is None or len(temp_axis) < 2:
+                raise ValueError("未找到温度坐标轴刻度")
+            y1, v1 = temp_axis[0]["y"], temp_axis[0]["v"]
+            y2, v2 = temp_axis[-1]["y"], temp_axis[-1]["v"]
+            if abs(y2 - y1) < 1:
+                raise ValueError("温度刻度异常")
+            t_slope = (v2 - v1) / (y2 - y1)
+
+            # ── 时间刻度：最底部一行的 HH:MM 文本 ──
+            time_words = []
+            for w in words:
+                t = w["text"].strip()
+                m = _re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", t)
+                if m:
+                    sec = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3) or 0)
+                    time_words.append({"sec": sec, "x": (w["x0"] + w["x1"]) / 2,
+                                       "y": (w["top"] + w["bottom"]) / 2})
+            x_slope = None
+            if len(time_words) >= 2:
+                time_words.sort(key=lambda w: -w["y"])
+                cand = [w for w in time_words if abs(w["y"] - time_words[0]["y"]) < 12]
+                cand.sort(key=lambda w: w["x"])
+                if len(cand) >= 2 and cand[-1]["x"] - cand[0]["x"] > 1:
+                    x_slope = (cand[-1]["sec"] - cand[0]["sec"]) / (cand[-1]["x"] - cand[0]["x"])
+                    x_base_x, x_base_sec = cand[0]["x"], cand[0]["sec"]
+
+            # 报告日期（时间轴只有时分时作基准日）
+            page_text = page.extract_text() or ""
+            base_date = ""
+            m = _re.search(r"\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}\.\d{1,2}\.\d{4}", page_text)
+            if m:
+                s = m.group(0)
+                for fmt in ("%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%d.%m.%Y"):
+                    try:
+                        base_date = _dtm.strptime(s, fmt).strftime("%Y-%m-%d")
+                        break
+                    except ValueError:
+                        continue
+
+            # ── 曲线点：合并非水平/垂直的矢量段（过滤网格、边框、限值线） ──
+            pts = []
+            for obj in list(page.curves) + list(page.lines):
+                seg = obj.get("pts") or []
+                if len(seg) < 2:
+                    continue
+                xs = [q[0] for q in seg]
+                ys = [q[1] for q in seg]
+                if max(ys) - min(ys) < 0.5 or max(xs) - min(xs) < 0.5:
+                    continue
+                pts.extend(seg)
+            if len(pts) < 10:
+                raise ValueError("未找到数据曲线")
+            pts.sort(key=lambda q: q[0])
+            merged = []
+            for x, y in pts:
+                if merged and x - merged[-1][0] < 0.7:
+                    px, py, k = merged[-1]
+                    merged[-1] = [px, (py * k + y) / (k + 1), k + 1]
+                else:
+                    merged.append([x, y, 1])
+
+            records = []
+            for x, y, _k in merged:
+                temp = v1 + t_slope * (y - y1)
+                rec = {"date": "", "time": "", "temperature": round(temp, 2),
+                       "humidity": None, "alarm": "",
+                       "_raw": {"source": "chart", "x": round(x, 1), "y": round(y, 1)}}
+                if x_slope is not None:
+                    sec = x_base_sec + x_slope * (x - x_base_x)
+                    sec = int(round(sec))
+                    days, rem = divmod(sec, 86400)
+                    hh, rem2 = divmod(rem, 3600)
+                    mm, ss = divmod(rem2, 60)
+                    if base_date:
+                        try:
+                            d0 = _dtm.strptime(base_date, "%Y-%m-%d") + _td(days=days)
+                            rec["date"] = d0.strftime("%Y-%m-%d")
+                        except ValueError:
+                            pass
+                    rec["time"] = "%02d:%02d:%02d" % (hh, mm, ss)
+                records.append(rec)
+            info = {"source": "pdf_chart", "chart_points": len(records)}
+            return records, info
+
+    @staticmethod
     def parse_testo_pdf(pdf_path):
         """解析 Testo 184 内置的 measurement report PDF，提取温度数据。
         Testo 报告 PDF 内通常含测量数据表格（日期/时间/温度/湿度/报警）"""
@@ -710,11 +908,27 @@ class DeviceDetector:
             except Exception:
                 pass
 
+        # 回退：矢量曲线图报告（设备 U 盘自动生成的报告没有数据表格）
         if not records:
-            raise ValueError("PDF 中未找到测量数据表格")
+            try:
+                chart_records, chart_info = DeviceDetector.parse_pdf_chart(pdf_path)
+                records = chart_records
+                device_info.update({k: v for k, v in chart_info.items() if v})
+            except Exception as e:
+                device_info["chart_error"] = str(e)
 
         device_info["pdf_file"] = os.path.basename(pdf_path)
-        device_info["source"] = "pdf_report"
+        if not device_info.get("source"):
+            device_info["source"] = "pdf_report"
+        # 从全文提取设备 SN（报告页眉/页脚通常印有 Serial Number）
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                full_text = "\n".join((pg.extract_text() or "") for pg in pdf.pages[:5])
+        except Exception:
+            full_text = ""
+        sn = DeviceDetector._extract_sn_from_text(full_text)
+        if sn:
+            device_info["serial_number"] = sn
         return headers_out or [], records, device_info
 
 
@@ -1084,6 +1298,7 @@ def detect_device(session_id):
                     "pdf_files": dev.get("pdf_files", []),
                     "source": "CSV" if dev["csv_files"] else ("PDF报告" if dev.get("pdf_files") else "无"),
                     "preview": preview,
+                    "scan_log": dev.get("scan_log", []),
                     "error": dev.get("error"),
                 }
             })
@@ -1229,8 +1444,23 @@ def _import_data_to_session(session_id, path, sample_minutes=None, start_time=No
         sn = info.get("serial_number") or "未知"
         device_label = f"xml-{sn}"
         raw_unit = "°C"
+    elif head.startswith(b"%PDF") or os.path.splitext(path)[1].lower() == ".pdf":
+        # Testo 报告 PDF：数据表格或图形曲线（设备盘 measurement report）
+        try:
+            _headers, pdf_records, info = DeviceDetector.parse_testo_pdf(path)
+        except Exception as e:
+            return False, {"error": f"解析 PDF 失败: {e}"}
+        if not pdf_records:
+            return False, {"error": "PDF 中未解析到温度数据（表格与曲线提取均无结果）"}
+        sn = info.get("serial_number") or "未知"
+        device_label = f"pdf-{sn}"
+        raw_unit = "°C"
+        records = [{"date": r.get("date", ""), "time": r.get("time", ""),
+                    "temperature": DeviceDetector._parse_temperature_text(r.get("temperature")),
+                    "humidity": DeviceDetector._parse_temperature_text(r.get("humidity")),
+                    "_raw": r.get("_raw")} for r in pdf_records]
     else:
-        return False, {"error": "不是支持的数据文件（支持 .vi2 存档与 .xml / .xdp 数据包）"}
+        return False, {"error": "不是支持的数据文件（支持 .vi2 存档、.xml / .xdp 数据包、Testo 报告 PDF）"}
     conn = get_db()
     next_point = conn.execute(
         "SELECT * FROM measurement_points WHERE session_id=? AND (serial_number='' OR serial_number IS NULL) "

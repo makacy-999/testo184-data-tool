@@ -128,7 +128,7 @@
                                         <span class="device-value" id="dev-count">-</span>
                                     </div>
                                     <div class="device-info-row">
-                                        <span class="device-label">CSV 文件</span>
+                                        <span class="device-label">文件处理明细</span>
                                         <span class="device-value" id="dev-files">-</span>
                                     </div>
                                 </div>
@@ -153,13 +153,13 @@
 
                         <!-- 数据文件导入（无设备时直接导入导出文件） -->
                         <div class="vi2-import" id="vi2-import-box" style="margin-top:28px;padding-top:20px;border-top:1px dashed #ddd">
-                            <h3>📁 直接导入数据文件（.vi2 / .xml / .xdp）</h3>
-                            <p class="card-desc">设备插上读不到数据？温度计 U 盘里有一个 <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">testo 184 configuration_数据.xdp</code> 文件（XML 数据包），把它拖进来即可自动读取全部温度数据并转为 Excel；也支持 Testo 软件导出的 <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.vi2</code> / <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.xml</code> 文件。</p>
+                            <h3>📁 直接导入数据文件（.vi2 / .xml / .xdp / PDF 报告）</h3>
+                            <p class="card-desc">设备插上读不到数据？把温度计 U 盘里的文件直接拖进来：<code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">testo 184 measurement report</code>（图形报告，自动从曲线提取数据）、<code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">testo 184 configuration_数据.xdp</code>（XML 数据包）、Testo 软件导出的 <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.vi2</code> / <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.xml</code> 都支持，自动读取全部温度数据并转为 Excel。</p>
                             <div class="vi2-hint" id="vi2-hint" style="display:none;background:#fff8e1;border:1px solid #f0c36d;color:#7a5c00;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.6">
-                                ⚠️ 已检测到设备，但未读取到温度数据。请在温度计 U 盘里找到 <code>testo 184 configuration_数据.xdp</code> 文件（或 Testo 软件导出的 .vi2 / .xml），拖到下方导入即可。
+                                ⚠️ 已检测到设备，但未读取到温度数据。把温度计 U 盘里的 <code>testo 184 measurement report</code>（图形报告）或 <code>configuration_数据.xdp</code> 拖到下方导入即可；<code>.vi2</code> / <code>.xml</code> 文件也可以。
                             </div>
                             <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                                <input type="file" id="vi2-file-input" accept=".vi2, .xdp, .xml, .bin, .dat" multiple class="input" style="flex:1;min-width:200px">
+                                <input type="file" id="vi2-file-input" accept=".vi2, .xdp, .xml, .pdf, .bin, .dat" multiple class="input" style="flex:1;min-width:200px">
                                 <button class="btn btn-success btn-lg" id="btn-import-vi2">
                                     📥 导入并读取数据
                                 </button>

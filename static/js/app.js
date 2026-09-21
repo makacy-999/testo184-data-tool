@@ -206,7 +206,20 @@ async function scanDevice() {
             document.getElementById('dev-name').textContent = dev.name;
             document.getElementById('dev-sn').value = dev.serial_number || '';
             document.getElementById('dev-count').textContent = `${dev.record_count} 条`;
-            document.getElementById('dev-files').textContent = dev.csv_files.join(', ') || '-';
+            // 文件处理明细（scan_log：每个文件怎么处理的、结果如何）
+            const filesEl = document.getElementById('dev-files');
+            const log = dev.scan_log || [];
+            if (log.length) {
+                filesEl.innerHTML = log.map(l => {
+                    let color = 'var(--text-muted)', mark = '—';
+                    if (l.status === 'ok') { color = 'var(--success)'; mark = '✓'; }
+                    else if (l.status === 'error') { color = '#c0392b'; mark = '✗'; }
+                    const cnt = l.status === 'ok' ? ` ${l.records} 条` : '';
+                    return `<div style="color:${color};line-height:1.7">${mark} ${l.file} [${l.kind}]${cnt}${l.detail ? ' · ' + l.detail : ''}</div>`;
+                }).join('');
+            } else {
+                filesEl.textContent = dev.csv_files.join(', ') || '-';
+            }
 
             // 数据预览
             const table = document.getElementById('preview-table');
@@ -238,7 +251,7 @@ async function scanDevice() {
                 if (vi2Hint) vi2Hint.style.display = 'none';
             } else {
                 document.getElementById('current-point-status').textContent =
-                    '检测到设备，但未读取出温度数据。请尝试下方的「导入 .vi2 数据文件」';
+                    '检测到设备，但未读取出温度数据。看左侧「文件处理明细」了解每个文件的情况；设备数据文件也可直接在下方「直接导入数据文件」处选择导入。';
                 if (vi2Hint) vi2Hint.style.display = '';
                 if (vi2Box) vi2Box.classList.add('highlight');
             }
