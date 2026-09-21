@@ -41,24 +41,34 @@ jobs:
             --add-data "vi2_parser.py${SEP}." \
             app.py
 
-      - name: Rename artifact
+      - name: Package into ZIP
         shell: bash
         run: |
           cd dist
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p pkg
           if [ "$RUNNER_OS" = "macOS" ]; then
-            mv Testo184Tool Testo184Tool-macOS
+            chmod +x Testo184Tool
+            cp Testo184Tool "pkg/Testo184Tool-macOS"
+            cd pkg && zip -r "../Testo184Tool-macOS-v${VERSION}.zip" "Testo184Tool-macOS"
           else
-            mv Testo184Tool.exe Testo184Tool-Windows.exe
+            cp Testo184Tool.exe "pkg/Testo184Tool-Windows.exe"
+            cd pkg
+            python -c "import shutil; shutil.make_archive('Testo184Tool-Windows-v${VERSION}', 'zip', '.', 'Testo184Tool-Windows.exe')"
+            mv "Testo184Tool-Windows-v${VERSION}.zip" ..
           fi
+          ls -la ..
+        env:
+          VERSION: ${{ github.ref_name }}
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
-          path: dist/*
+          path: dist/*.zip
 
       - name: Attach to Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: dist/*.zip
