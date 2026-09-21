@@ -191,7 +191,7 @@ async function scanDevice() {
 
             // 显示设备信息
             document.getElementById('dev-name').textContent = dev.name;
-            document.getElementById('dev-sn').textContent = dev.serial_number || '未知';
+            document.getElementById('dev-sn').value = dev.serial_number || '';
             document.getElementById('dev-count').textContent = `${dev.record_count} 条`;
             document.getElementById('dev-files').textContent = dev.csv_files.join(', ') || '-';
 
@@ -253,7 +253,7 @@ async function confirmRead() {
             method: 'POST',
             body: {
                 device_path: state.detectedDevice.path,
-                serial_number: state.detectedDevice.serial_number || '',
+                serial_number: document.getElementById('dev-sn').value.trim() || state.detectedDevice.serial_number || '',
             },
         });
 
@@ -292,38 +292,81 @@ async function buildSummary() {
         const grid = document.getElementById('summary-grid');
         const stats = document.getElementById('summary-stats');
 
-        grid.innerHTML = session.points.map(p => `
+        const pts = session.points || [];
+        const totalCount = pts.reduce((sum, p) => sum + (p.record_count || 0), 0);
+
+        grid.innerHTML = pts.map(p => `
             <div class="summary-item">
                 <div class="s-point">测点 #${p.point_number}</div>
                 <div class="s-sn">SN: ${p.serial_number || '未设置'}</div>
                 <div class="s-count">${p.record_count || 0} 条数据</div>
+                <button class="btn btn-ghost btn-sm" onclick="viewPointDetail('${p.point_number}')">查看明细</button>
             </div>
         `).join('');
 
-        const totalRecords = session.total_records || state.totalRecords;
+        const sheetCount = 3 + (pts.filter(p => (p.record_count || 0) > 0).length);
         stats.innerHTML = `
             <div class="summary-stat-item">
-                <div class="summary-stat-value">${session.points.length}</div>
+                <div class="summary-stat-value">${pts.length}</div>
                 <div class="summary-stat-label">设备数量</div>
             </div>
             <div class="summary-stat-item">
-                <div class="summary-stat-value">${totalRecords}</div>
+                <div class="summary-stat-value">${totalCount}</div>
                 <div class="summary-stat-label">数据总条数</div>
             </div>
             <div class="summary-stat-item">
-                <div class="summary-stat-value">3</div>
+                <div class="summary-stat-value">${sheetCount}</div>
                 <div class="summary-stat-label">Excel 工作表</div>
             </div>
         `;
 
         // 更新 Step 4 数据
-        document.getElementById('export-total-points').textContent = session.points.length;
-        document.getElementById('export-total-records').textContent = totalRecords;
+        document.getElementById('export-total-points').textContent = pts.length;
+        document.getElementById('export-total-records').textContent = totalCount;
+        document.getElementById('export-sheets').textContent = sheetCount;
+        document.getElementById('btn-export').disabled = totalCount === 0;
+
+        // 隐藏明细
+        document.getElementById('summary-detail').style.display = 'none';
 
         goToStep(3);
         setStatus('数据汇总完成，可以导出');
     } catch (e) {
         toast(`加载汇总失败: ${e.message}`, 'error');
+    }
+}
+
+// 查看某测点的数据明细
+async function viewPointDetail(pointNumber) {
+    const detail = document.getElementById('summary-detail');
+    const table = document.getElementById('summary-detail-table');
+    const thead = table.querySelector('thead tr');
+    const tbody = table.querySelector('tbody');
+
+    document.getElementById('summary-detail-title').textContent = `测点 #${pointNumber} 数据明细（最多前200条）`;
+    detail.style.display = '';
+
+    thead.innerHTML = '<th>序号</th><th>日期</th><th>时间</th><th>温度(°C)</th><th>湿度(%)</th><th>报警</th>';
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">加载中...</td></tr>';
+
+    try {
+        const records = await api(`/api/sessions/${state.sessionId}/points/${pointNumber}/data`);
+        if (!records || records.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--text-muted)">暂无数据</td></tr>';
+            return;
+        }
+        tbody.innerHTML = records.map(r => `
+            <tr>
+                <td>${r.record_index || ''}</td>
+                <td>${r.date_val || ''}</td>
+                <td>${r.time_val || ''}</td>
+                <td>${r.temperature ?? '-'}</td>
+                <td>${r.humidity ?? '-'}</td>
+                <td>${r.alarm || ''}</td>
+            </tr>
+        `).join('');
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--danger)">加载失败: ${e.message}</td></tr>`;
     }
 }
 
@@ -459,6 +502,21 @@ document.addEventListener('DOMContentLoaded', () => {
     // Step 4
     document.getElementById('btn-export').addEventListener('click', exportExcel);
     document.getElementById('btn-new-session').addEventListener('click', newSession);
+
+    // Step 3 → Step 4 衔接
+    document.getElementById('btn-to-export').addEventListener('click', () => {
+        // 已读取的数据数量
+        const total = document.getElementById('export-total-records').textContent;
+        if (parseInt(total || '0') === 0) {
+            toast('还没有读取到任何数据，请先完成设备读取', 'warning');
+            return;
+        }
+        goToStep(4);
+        setStatus('请点击导出 Excel 文件');
+    });
+    document.getElementById('btn-close-detail').addEventListener('click', () => {
+        document.getElementById('summary-detail').style.display = 'none';
+    });
 
     // History
     document.getElementById('btn-history').addEventListener('click', showHistory);

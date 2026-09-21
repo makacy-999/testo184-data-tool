@@ -151,15 +151,32 @@ class DeviceDetector:
 
     @staticmethod
     def is_testo_device(path):
+        """识别是否为 Testo 184 温度计设备。
+        放宽判断：不要求挂载名必须含 TESTO/184（很多情况设备名是随机的），
+        改为优先读取目录下 CSV 内容特征来判断。"""
         name = os.path.basename(path).upper()
-        if "TESTO" in name and "184" in name:
+        if "TESTO" in name or "184" in name:
             return True
         try:
-            files = [f.lower() for f in os.listdir(path)]
-            testo_keywords = ["testo", "configuration", "measurement", "messdaten"]
-            return sum(1 for kw in testo_keywords if any(kw in f for f in files)) >= 2
+            files = os.listdir(path)
         except (OSError, PermissionError):
             return False
+
+        # 读前几个 CSV 的内容特征
+        csv_files = [f for f in files if f.lower().endswith(".csv")]
+        for f in csv_files[:5]:
+            fp = os.path.join(path, f)
+            try:
+                with open(fp, "rb") as fh:
+                    head = fh.read(3000).decode("utf-8", "ignore").lower()
+                if "testo" in head:
+                    return True
+            except Exception:
+                continue
+
+        files_lower = [f.lower() for f in files]
+        testo_keywords = ["testo", "configuration", "measurement", "messdaten", "184"]
+        return sum(1 for kw in testo_keywords if any(kw in f for f in files_lower)) >= 2
 
     @classmethod
     def scan(cls):
@@ -199,12 +216,46 @@ class DeviceDetector:
                         device["error"] = f"解析 {os.path.basename(csv_file)} 失败: {e}"
 
                 device["records"] = all_records
-                # 尝试提取序列号
-                for key in ["serial", "serial_number", "sn", "s/n", "序列号"]:
+                # 尝试提取序列号：从 CSV 注释行 / 文件名 / 首行元信息
+                for key in ["serial", "serial_number", "sn", "s/n", "序列号", "deviceserialnumber", "serial no."]:
                     if key in device_info and device_info[key]:
                         device["serial_number"] = str(device_info[key])
                         break
-                # 如果没找到，用设备名作为标识
+                if not device["serial_number"]:
+                    # 从 CSV 文件名中提取（Testo 184 文件名常含 SN，如 184XXXX.csv）
+                    import re as _re
+                    for cf in device.get("csv_files", []):
+                        base = os.path.basename(cf)
+                        m = _re.search(r"(\d{6,})", base)
+                        if m:
+                            device["serial_number"] = m.group(1)
+                            break
+                # 仍然没找到：扫描设备目录下所有非 CSV 的元信息文件首行
+                if not device["serial_number"]:
+                    try:
+                        for root, _, fs in os.walk(mp):
+                            for f in fs:
+                                if f.lower().endswith((".txt", ".ini", ".log", ".cfg")):
+                                    fp = os.path.join(root, f)
+                                    for enc in ["utf-8-sig", "utf-8", "latin-1", "gbk"]:
+                                        try:
+                                            with open(fp, "r", encoding=enc) as fh:
+                                                first = fh.read(2000)
+                                            import re as _re
+                                            m = _re.search(r"(?:serial|sn|nr)\.?:?\s*([A-Za-z0-9\-]{4,20})",
+                                                            first, _re.IGNORECASE)
+                                            if m:
+                                                device["serial_number"] = m.group(1).strip()
+                                            break
+                                        except (UnicodeDecodeError, OSError):
+                                            continue
+                                    if device["serial_number"]:
+                                        break
+                            if device["serial_number"]:
+                                break
+                    except Exception:
+                        pass
+                # 如果实在提取不到，拼接设备名作为标识（用户可在界面手动修正）
                 if not device["serial_number"]:
                     device["serial_number"] = device["name"]
 
@@ -815,4 +866,16 @@ if __name__ == "__main__":
     print("╚══════════════════════════════════════════════════╝")
     print()
     # 注意：不用 5000 端口，macOS 的 AirPlay 接收器默认占用 5000 端口
+
+    # 自动在默认浏览器中打开（服务启动后延迟打开，避免端口未就绪）
+    def _open_browser():
+        import time
+        time.sleep(1.0)
+        import webbrowser
+        try:
+            webbrowser.open("http://localhost:8000")
+        except Exception:
+            pass
+
+    threading.Thread(target=_open_browser, daemon=True).start()
     app.run(host="0.0.0.0", port=8000, debug=False)

@@ -321,6 +321,12 @@ body {
 .summary-item .s-point { font-weight: 700; color: var(--primary); }
 .summary-item .s-sn { font-size: 0.85rem; color: var(--text-secondary); margin-top: 4px; }
 .summary-item .s-count { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+.summary-item .btn-sm { margin-top: 10px; }
+
+.summary-detail { margin-top: 20px; }
+.summary-detail-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.summary-detail-head h3 { font-size: 1rem; }
+.table-wrap { overflow-x: auto; border-radius: var(--radius-sm); border: 1px solid var(--border); max-height: 420px; overflow-y: auto; }
 
 .summary-stats {
     display: flex;

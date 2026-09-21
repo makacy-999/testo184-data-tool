@@ -121,7 +121,7 @@
                                     </div>
                                     <div class="device-info-row">
                                         <span class="device-label">SN 号</span>
-                                        <span class="device-value" id="dev-sn">-</span>
+                                        <input type="text" class="input" id="dev-sn" placeholder="自动识别，可手动修改" value="-">
                                     </div>
                                     <div class="device-info-row">
                                         <span class="device-label">数据量</span>
@@ -167,6 +167,24 @@
                         </div>
                         <div class="summary-stats" id="summary-stats">
                             <!-- 统计信息 -->
+                        </div>
+                        <!-- 每测点数据明细 -->
+                        <div class="summary-detail" id="summary-detail" style="display:none">
+                            <div class="summary-detail-head">
+                                <h3 id="summary-detail-title">数据明细</h3>
+                                <button class="btn btn-ghost btn-sm" id="btn-close-detail">&times; 收起</button>
+                            </div>
+                            <div class="table-wrap">
+                                <table class="preview-table" id="summary-detail-table">
+                                    <thead><tr></tr></thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="card-actions" style="margin-top:24px">
+                            <button class="btn btn-primary btn-lg" id="btn-to-export">
+                                下一步：导出 Excel →
+                            </button>
                         </div>
                     </div>
                 </div>
