@@ -230,7 +230,18 @@ async function scanDevice() {
 
             document.getElementById('device-result').style.display = '';
             document.getElementById('btn-confirm-read').style.display = '';
-            document.getElementById('current-point-status').textContent = '检测到设备！请确认后点击「确认读取」';
+            // 设备识别成功但没读到数据：引导用户改用 vi2 导入（Testo 设备数据常需 ComSoft 导出）
+            const vi2Hint = document.getElementById('vi2-hint');
+            const vi2Box = document.getElementById('vi2-import-box');
+            if (dev.record_count && dev.record_count > 0) {
+                document.getElementById('current-point-status').textContent = '检测到设备！请确认后点击「确认读取」';
+                if (vi2Hint) vi2Hint.style.display = 'none';
+            } else {
+                document.getElementById('current-point-status').textContent =
+                    '检测到设备，但未读取出温度数据。请尝试下方的「导入 .vi2 数据文件」';
+                if (vi2Hint) vi2Hint.style.display = '';
+                if (vi2Box) vi2Box.classList.add('highlight');
+            }
 
             toast(`检测到设备: ${dev.name}`, 'success');
             setStatus(`检测到设备: ${dev.name}，共 ${dev.record_count} 条数据`);

@@ -498,3 +498,16 @@ body {
     margin: 12px 0 4px;
     font-size: 14px;
 }
+
+/* v1.5: 设备 0 数据时高亮 .vi2 导入区块 */
+.vi2-import.highlight {
+    border: 2px solid var(--accent, #2f6fed);
+    border-radius: 12px;
+    padding: 18px 16px;
+    background: rgba(47,111,237,0.05);
+    animation: vi2Pulse 1.6s ease-in-out infinite;
+}
+@keyframes vi2Pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(47,111,237,0.25); }
+    50% { box-shadow: 0 0 0 8px rgba(47,111,237,0); }
+}

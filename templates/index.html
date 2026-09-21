@@ -152,11 +152,14 @@
                         </div>
 
                         <!-- .vi2 文件导入（无设备时直接导入导出文件） -->
-                        <div class="vi2-import" id="vi2-import" style="margin-top:28px;padding-top:20px;border-top:1px dashed #ddd">
+                        <div class="vi2-import" id="vi2-import-box" style="margin-top:28px;padding-top:20px;border-top:1px dashed #ddd">
                             <h3>📁 直接导入 .vi2 数据文件</h3>
-                            <p class="card-desc">没有把温度计插到电脑上？直接选择用 Testo 软件导出的 <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.vi2</code> 文件，自动读取全部温度数据并转为 Excel。</p>
+                            <p class="card-desc">设备插上读不到数据，或没有把温度计插到电脑上？先用 Testo 软件把设备数据导出成 <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.vi2</code> 文件，在这里选择它即可自动读取全部温度数据并转为 Excel。</p>
+                            <div class="vi2-hint" id="vi2-hint" style="display:none;background:#fff8e1;border:1px solid #f0c36d;color:#7a5c00;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.6">
+                                ⚠️ 已检测到设备，但未读取到温度数据。Testo 184 的部分固件需先用官方软件把数据导出为 <code>.vi2</code> 存档，再在下方向上选择该文件导入即可。若你手上已有 <code>.vi2</code> 文件，请直接导入。
+                            </div>
                             <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                                <input type="file" id="vi2-file-input" accept=".vi2" class="input" style="flex:1;min-width:200px">
+                                <input type="file" id="vi2-file-input" accept=".vi2, .bin, .dat" class="input" style="flex:1;min-width:200px">
                                 <button class="btn btn-success btn-lg" id="btn-import-vi2">
                                     📥 导入并读取数据
                                 </button>

@@ -210,7 +210,10 @@ class DeviceDetector:
                 vi2_files = []
                 try:
                     for root, dirs, files in os.walk(mp):
-                        dirs[:] = [d for d in dirs if not d.startswith(".")]
+                        # 不排除隐藏目录：Testo 设备数据文件可能位于隐藏/系统目录（如 .SystemVolumeInformation）
+                        dirs[:] = [d for d in dirs
+                                   if d.lower() not in ("found.000", "system volume information")
+                                   and d.lower() != "$recycle.bin"]
                         for f in files:
                             fl = f.lower()
                             if fl.endswith(".csv"):
