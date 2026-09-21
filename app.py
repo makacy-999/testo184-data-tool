@@ -218,10 +218,22 @@ class DeviceDetector:
                             fl = f.lower()
                             if fl.endswith(".csv"):
                                 csv_files.append(os.path.join(root, f))
-                            elif fl.endswith(".pdf"):
+                            elif fl.endswith(".pdf") or "report" in fl or "measurement" in fl:
                                 pdf_files.append(os.path.join(root, f))
                             elif fl.endswith(".vi2"):
                                 vi2_files.append(os.path.join(root, f))
+                            else:
+                                # 无扩展名的报告文件：按内容签名识别（Testo 设备报告常无扩展名）
+                                fp = os.path.join(root, f)
+                                try:
+                                    with open(fp, "rb") as fh:
+                                        sig = fh.read(2048)
+                                    if sig.startswith(b"%PDF"):
+                                        pdf_files.append(fp)
+                                    elif sig.startswith(b"D0CF11E0"):
+                                        vi2_files.append(fp)
+                                except Exception:
+                                    pass
                 except (OSError, PermissionError) as e:
                     device["error"] = f"读取目录失败: {e}"
 
