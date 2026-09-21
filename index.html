@@ -113,13 +113,13 @@ footer .lic{opacity:.8}
   <section class="hero" aria-labelledby="main-title">
     <div class="wrap">
       <div>
-        <span class="tag">v1.8.0 · 免安装 · 数据仅存本机</span>
+        <span class="tag">v1.9.0 · 免安装 · 数据仅存本机</span>
         <h1 id="main-title">把 Testo 184 温度计的数据，<br>变成一张汇总 Excel</h1>
-        <p class="lead">逐台插入温度计自动读取（含设备盘上的 <b>configuration_数据.xdp</b> 数据包），或导入 Testo 软件导出的 <b>.vi2 / .xml / .xdp</b> 文件，还可开启<b>软件联动</b>——监控导出文件夹，新数据文件自动抓取汇总，一键导出包含<b>每测点逐分钟温度记录</b>的汇总工作簿。启动后自动打开浏览器进入页面，内置 Testo 184 报告 PDF、.vi2 专有格式与 XML/XDP 数据包解析，设备 SN 支持人工修正，汇总页可勾选设备后导出。macOS 与 Windows 通用。</p>
+        <p class="lead">逐台插入温度计自动读取——<b>设备盘的图形报告直接还原成数据表</b>（曲线坐标反推温度），序列号自动识别；也可导入 <b>.vi2 / .xml / .xdp / PDF 报告</b>，或开启<b>软件联动</b>监控导出文件夹自动抓取，一键导出包含<b>每测点温度记录</b>的汇总工作簿。扫描时每个文件的处理结果（格式、条数、原因）都直接显示在页面上，读不出数据时一眼看到卡在哪。macOS 与 Windows 通用。</p>
         <div class="dl-row">
-          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.8.0/Testo184Tool-macOS" target="_blank" rel="noopener noreferrer">下载 macOS 版 <span class="num">29.9 MB · 免安装直接运行</span></a>
-          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.8.0/Testo184Tool-Windows-v1.8.0.zip" target="_blank" rel="noopener noreferrer">下载 Windows 版 <span class="num">11.9 MB · ZIP</span></a>
-          <a class="btn btn-ghost" href="https://github.com/makacy-999/testo184-data-tool/releases/tag/v1.8.0" target="_blank" rel="noopener noreferrer">版本发布页</a>
+          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.9.0/Testo184Tool-macOS" target="_blank" rel="noopener noreferrer">下载 macOS 版 <span class="num">29.9 MB · 免安装直接运行</span></a>
+          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v1.9.0/Testo184Tool-Windows-v1.9.0.zip" target="_blank" rel="noopener noreferrer">下载 Windows 版 <span class="num">11.9 MB · ZIP</span></a>
+          <a class="btn btn-ghost" href="https://github.com/makacy-999/testo184-data-tool/releases/tag/v1.9.0" target="_blank" rel="noopener noreferrer">版本发布页</a>
         </div>
         <p class="meta-note">下载后直接运行，无需安装 Python。<strong>测量数据 100% 保存在本机</strong>，不上传任何服务器。</p>
       </div>
@@ -162,7 +162,7 @@ footer .lic{opacity:.8}
       </div>
       <div class="steps">
         <div class="step"><h3>配置测点</h3><p>输入本次要监测的测点数量，生成测点清单，测点编号可自行修改。</p><span class="hint">例如：1 号冷库、2 号冷库</span></div>
-        <div class="step"><h3>读取设备 / 软件联动</h3><p>USB 插入温度计自动识别解析（含设备盘 <code>.xdp</code> 数据包直读）；上传 <code>.vi2 / .xml / .xdp</code> 一键导入（支持多选）；或开启联动模式，监控 Testo 软件导出文件夹，新数据文件<b>自动导入</b>。</p><span class="hint">.vi2 / XML 自动解析温度与时间</span></div>
+        <div class="step"><h3>读取设备 / 软件联动</h3><p>USB 插入温度计自动识别解析（图形报告曲线还原 + <code>.xdp</code> 数据包直读）；上传 <code>.vi2 / .xml / .xdp / PDF</code> 一键导入（支持多选）；或开启联动模式，监控 Testo 软件导出文件夹，新数据文件<b>自动导入</b>。</p><span class="hint">曲线图也能逆向还原成数据表</span></div>
         <div class="step"><h3>核对汇总</h3><p>所有设备读取完毕，核对测点—SN 对照表与数据条数，发现误读可单独重读。</p><span class="hint">数据同时存入本机数据库，可回看历史</span></div>
         <div class="step"><h3>导出 Excel</h3><p>一键生成汇总工作簿：全部数据 + 每台设备独立工作表 + 统计摘要。</p><span class="hint">文件名自动带时间戳</span></div>
       </div>
@@ -236,7 +236,7 @@ cd testo184-data-tool
       <div class="sec-head"><span class="kicker">常见问题</span><h2 id="faq-title">使用前值得知道的几件事</h2></div>
       <details><summary>数据存哪里？会上传吗？</summary><div class="ans">全部保存在你电脑上的本地数据库（程序目录的 <code>data</code> 子目录），不经过任何服务器。导出的 Excel 也只生成在本机，由你自己分发。</div></details>
       <details><summary>支持哪些型号？可以同时插多台吗？</summary><div class="ans">当前版本针对 <strong>Testo 184</strong> 系列设计。读取方式为逐台插入：插一台读一台，读完提示更换下一台——这样测点与设备 SN 的对应关系最可靠，也避免 USB Hub 供电不足导致读数失败。</div></details>
-      <details><summary>温度计读不到数据？用软件联动自动转 Excel。</summary><div class="ans">部分 Testo 184 固件的完整数据需官方软件读取。推荐「软件联动」：① 建一个空文件夹（如桌面「testo导出」），把路径填到工具的联动模式里点「开始监控」；② 点「一键调用 Testo 软件」自动打开电脑上的 ComSoft/Testo 软件（或手动打开），插上温度计，在软件里读取并保存 <code>.vi2 / .xml / .xdp</code> 到该文件夹（保存了其他格式文件时页面会提示文件名和原因）；③ 本工具检测到新文件即自动解析导入（自动识别 SN、采样间隔、起止时间），多台依次保存即可，最后导出 Excel。温度计 U 盘里的 <code>testo 184 configuration_数据.xdp</code> 是 XML 数据包，把它拖到「直接导入数据文件」处即可读取；也支持一次多选多个文件手动导入。</div></details>
+      <details><summary>温度计读不到数据？用软件联动自动转 Excel。</summary><div class="ans">部分 Testo 184 固件的完整数据需官方软件读取。推荐「软件联动」：① 建一个空文件夹（如桌面「testo导出」），把路径填到工具的联动模式里点「开始监控」；② 点「一键调用 Testo 软件」自动打开电脑上的 ComSoft/Testo 软件（或手动打开），插上温度计，在软件里读取并保存 <code>.vi2 / .xml / .xdp</code> 到该文件夹（保存了其他格式文件时页面会提示文件名和原因）；③ 本工具检测到新文件即自动解析导入（自动识别 SN、采样间隔、起止时间），多台依次保存即可，最后导出 Excel。把温度计 U 盘里的 <code>testo 184 measurement report</code>（图形报告）或 <code>configuration_数据.xdp</code> 拖到「直接导入数据文件」处即可读取——图形报告会自动从曲线还原数据；也支持一次多选多个文件手动导入。扫描设备时页面会显示每个文件的处理明细（格式、解析条数、原因），数据读不出时可直接定位问题文件。</div></details>
 <details><summary>识别不到温度计怎么办？</summary><div class="ans">点击「扫描 USB 设备」前先确认设备指示灯亮起；macOS 如仍无法识别，换个 USB 口或转接头再扫。接入后系统会把设备识别为一个 U 盘形状的存储设备。</div></details>
       <details><summary>读错了能重读吗？历史能找回吗？</summary><div class="ans">可以。读取确认前可放弃重插；确认后发现错误，可在会话中删除该测点重读。所有历史会话保存在本机数据库，打开应用即可切换查看。</div></details>
       <details><summary>是开源的吗？</summary><div class="ans">是，采用 MIT 协议开源，源码与更新发布在 <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>。</div></details>
@@ -246,7 +246,7 @@ cd testo184-data-tool
 
 <footer>
   <div class="wrap">
-    <div>Testo 184 数据读取汇总工具 · <span class="num">v1.8.0</span> · <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub</a></div>
+    <div>Testo 184 数据读取汇总工具 · <span class="num">v1.9.0</span> · <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub</a></div>
     <div class="lic">MIT License · 数据仅存本机</div>
   </div>
 </footer>
