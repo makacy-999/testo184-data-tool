@@ -686,6 +686,7 @@ class DeviceDetector:
         pats = [
             r"(?:serial(?:\s*number)?|s\s*/\s*n|seriennummer|serial\s*no\.?|序列号)"
             r"[^0-9A-Za-z]{0,4}[:：]?\s*([0-9]{6,10})",
+            r"\bSN\.?\s*[:：.]?\s*([0-9]{6,10})",   # 如 "SN.:44023840"（testo 184 报告页脚）
             r"\b(440[0-9]{5})\b",   # testo 184 SN 特征段
         ]
         for pat in pats:
@@ -757,13 +758,36 @@ class DeviceDetector:
                 m = _re.fullmatch(r"(\d{1,2}):(\d{2})(?::(\d{2}))?", t)
                 if m:
                     sec = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + int(m.group(3) or 0)
-                    time_words.append({"sec": sec, "x": (w["x0"] + w["x1"]) / 2,
+                    time_words.append({"sec": sec, "x": w["x0"],
                                        "y": (w["top"] + w["bottom"]) / 2})
             x_slope = None
             if len(time_words) >= 2:
                 time_words.sort(key=lambda w: -w["y"])
                 cand = [w for w in time_words if abs(w["y"] - time_words[0]["y"]) < 12]
                 cand.sort(key=lambda w: w["x"])
+                # 等差链清洗：统计区的起止时间等游离词可能与刻度行同一水平，
+                # 且时间值恰好衔接；要求相邻刻度的时间差与 x 间距同时均匀，
+                # 只保留最长等差链
+                diffs = [cand[i + 1]["sec"] - cand[i]["sec"] for i in range(len(cand) - 1)]
+                dxs = [cand[i + 1]["x"] - cand[i]["x"] for i in range(len(cand) - 1)]
+                pos = sorted(d for d in diffs if d > 0)
+                posx = sorted(d for d in dxs if d > 0)
+                med = pos[len(pos) // 2] if pos else 0
+                medx = posx[len(posx) // 2] if posx else 0
+                if med > 0 and medx > 0:
+                    best = []
+                    for s in range(len(cand)):
+                        chain = [cand[s]]
+                        for w in cand[s + 1:]:
+                            d = w["sec"] - chain[-1]["sec"]
+                            dx = w["x"] - chain[-1]["x"]
+                            if (abs(d - med) <= med * 0.3
+                                    and abs(dx - medx) <= medx * 0.45):
+                                chain.append(w)
+                        if len(chain) > len(best):
+                            best = chain
+                    if len(best) >= 2:
+                        cand = best
                 if len(cand) >= 2 and cand[-1]["x"] - cand[0]["x"] > 1:
                     x_slope = (cand[-1]["sec"] - cand[0]["sec"]) / (cand[-1]["x"] - cand[0]["x"])
                     x_base_x, x_base_sec = cand[0]["x"], cand[0]["sec"]
@@ -781,17 +805,22 @@ class DeviceDetector:
                     except ValueError:
                         continue
 
-            # ── 曲线点：合并非水平/垂直的矢量段（过滤网格、边框、限值线） ──
+            # ── 曲线点：只取 curves 连续折线（testo 报告的数据曲线是单条 polyline），
+            # lines 是网格/边框/限值线/刻度短线，整体排除；并用图表区域双重过滤 ──
+            # （单段可能近似水平，不能按段过滤；区域外可能有 logo 等装饰曲线）
+            ax_ys = [n["y"] for n in temp_axis]
+            y_lo, y_hi = min(ax_ys) - 15, max(ax_ys) + 15
+            if x_slope is not None:
+                x_lo, x_hi = x_base_x - 20, cand[-1]["x"] + 20
+            else:
+                x_lo, x_hi = temp_axis[0]["x"] + 5, page.width
             pts = []
-            for obj in list(page.curves) + list(page.lines):
+            for obj in list(page.curves):
                 seg = obj.get("pts") or []
-                if len(seg) < 2:
-                    continue
-                xs = [q[0] for q in seg]
-                ys = [q[1] for q in seg]
-                if max(ys) - min(ys) < 0.5 or max(xs) - min(xs) < 0.5:
-                    continue
-                pts.extend(seg)
+                for q in seg:
+                    qx, qy = q[0], q[1]
+                    if x_lo <= qx <= x_hi and y_lo <= qy <= y_hi:
+                        pts.append((qx, qy))
             if len(pts) < 10:
                 raise ValueError("未找到数据曲线")
             pts.sort(key=lambda q: q[0])
