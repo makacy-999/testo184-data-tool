@@ -890,7 +890,7 @@ async function batchExport() {
     if (!r.ok) { box.innerHTML = '<div style="color:#c0392b">导出失败：' + esc(r.error || '') + '</div>'; return; }
     const a = '/api/batch/download/' + encodeURIComponent(r.file);
     box.innerHTML = '<div style="color:#1e7e34;line-height:1.9">✅ 已生成汇总 Excel（<b>' + r.device_count + '</b> 台设备）。<br>' +
-        '<a class="btn btn-primary" href="' + a + '" download>📥 下载 温度计批量汇总.xlsx</a></div>';
+        '<a class="btn btn-primary" href="' + a + '" download="Testo184_Batch.xlsx">📥 下载 汇总 Excel</a></div>';
 }
 async function batchClear() {
     await fetch('/api/batch/clear', { method: 'POST' });

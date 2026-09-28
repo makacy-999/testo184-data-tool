@@ -406,7 +406,100 @@ class DeviceDetector:
                     device["serial_number"] = device["name"]
 
                 devices.append(device)
+
+        # ── v3.0.1: 追加扫描 ComSoft 接力文件夹中的全量 vi2/CSV 存档 ──
+        # testo 184 设备 U 盘上没有原始数据文件，只有自带 PDF 报告（官方曲线最多 324 点）。
+        # 全量数据须由 ComSoft(cc4.exe) 读取设备后导出为 .vi2/.csv 到接力文件夹(testo_export)。
+        # 这里把接力文件夹中的存档也识别为候选设备源，供批量流程读取全量数据。
+        try:
+            relay_dirs = cls._relay_export_dirs()
+            seen_paths = {d.get("path") for d in devices}
+            for rdir in relay_dirs:
+                for root, dirs, files in os.walk(rdir):
+                    dirs[:] = [d for d in dirs
+                               if d.lower() not in ("found.000", "system volume information")
+                               and d.lower() != "$recycle.bin"]
+                    for f in files:
+                        fl = f.lower()
+                        if not (fl.endswith(".vi2") or fl.endswith(".csv")):
+                            continue
+                        full = os.path.join(root, f)
+                        try:
+                            if fl.endswith(".csv"):
+                                headers, records, rinfo = cls.parse_csv(full)
+                                for r in records:
+                                    r["source_file"] = os.path.basename(f)
+                            else:
+                                parsed = parse_vi2(full)
+                                records = []
+                                for idx, r in enumerate(parsed.get("records") or [], 1):
+                                    records.append({"date": r["date"], "time": r["time"],
+                                                    "temperature": r["temperature"],
+                                                    "source_file": os.path.basename(f),
+                                                    "record_index": idx})
+                                rinfo = {"serial": parsed.get("serial_number", "")}
+                            if not records:
+                                continue
+                            sn = str((rinfo or {}).get("serial") or "")
+                            if not sn:
+                                import re as _re
+                                m = _re.search(r"(\d{6,})", os.path.basename(f))
+                                if m:
+                                    sn = m.group(1)
+                            if not sn:
+                                sn = "RELAY_" + f
+                            dev = {
+                                "path": full,
+                                "name": os.path.basename(f),
+                                "csv_files": [full] if fl.endswith(".csv") else [],
+                                "vi2_files": [os.path.basename(f)] if fl.endswith(".vi2") else [],
+                                "pdf_files": [],
+                                "xml_files": [],
+                                "records": records,
+                                "serial_number": sn,
+                                "scan_log": [{"file": os.path.basename(f), "kind": "ComSoft存档",
+                                              "status": "ok", "records": len(records),
+                                              "detail": "接力文件夹全量存档 %d 条" % len(records)}],
+                                "error": None,
+                                "_relay": True,
+                            }
+                            from itertools import count
+                            _c = count(1)
+                            key = full
+                            probes = [key] + [key + str(next(_c)) for _ in range(5)]
+                            if key not in seen_paths:
+                                devices.append(dev)
+                                seen_paths.add(key)
+                        except Exception:
+                            continue
+        except Exception:
+            pass
         return devices
+
+    @classmethod
+    def _relay_export_dirs(cls):
+        """返回需要扫描的 ComSoft 接力导出目录（去重后）"""
+        dirs = []
+        try:
+            dirs.append(_recommended_export_dir())
+        except Exception:
+            pass
+        home = os.path.expanduser("~")
+        for base in ("Desktop", "桌面", "Documents", "文档"):
+            d = os.path.join(home, base)
+            if os.path.isdir(d):
+                dirs.append(d)
+        seen = set()
+        out = []
+        for d in dirs:
+            try:
+                real = os.path.realpath(d)
+            except OSError:
+                real = d
+            if real not in seen:
+                seen.add(real)
+                out.append(d)
+        return out
 
     @staticmethod
     def parse_csv(csv_path):
@@ -447,13 +540,34 @@ class DeviceDetector:
         if not data_lines:
             raise ValueError("无数据行")
 
-        # 自动检测分隔符
+        # 自动检测分隔符：Sniffer 对单列/纯数值行常失败，退回统计法
         sample = "\n".join(data_lines[:10])
+        sep = ","
         try:
             dialect = csv.Sniffer().sniff(sample, delimiters=",;\t|")
-            sep = dialect.delimiter
+            if dialect.delimiter:
+                sep = dialect.delimiter
         except csv.Error:
-            sep = ","
+            pass
+        if sep == ",":
+            best = None
+            best_score = -1
+            for cand in [",", ";", "\t", "|"]:
+                try:
+                    cnt = [len(r) for r in csv.reader(data_lines[:20], delimiter=cand) if r]
+                except Exception:
+                    continue
+                if not cnt:
+                    continue
+                # 一致性：>60% 行分割后列数相等；且列数 >=2
+                from collections import Counter
+                top, freq = Counter(cnt).most_common(1)[0]
+                score = freq / len(cnt)
+                if score > best_score and top >= 2:
+                    best_score = score
+                    best = (cand, top, score)
+            if best and best[2] >= 0.6:
+                sep = best[0]
 
         reader = csv.reader(data_lines, delimiter=sep)
         rows = list(reader)
@@ -1967,11 +2081,13 @@ BATCH = {"id": None, "devices": [], "running": False}
 
 
 def _batch_source(dev):
+    if dev.get("_relay"):
+        return "ComSoft全量存档(接力文件夹)"
     if dev.get("csv_files"):
         return "CSV"
     try:
         if any(f.lower().endswith(".vi2")
-               for _, _, fs in os.walk(dev["path"]) for f in fs):
+               for _, _, fs in os.walk(dev["path"]) for f in fs) if os.path.isdir(dev["path"]) else False:
             return "vi2存档(ComSoft导出)"
     except OSError:
         pass
@@ -2013,8 +2129,17 @@ def batch_detect():
         return jsonify({"error": f"检测失败: {e}"}), 500
     if not devices:
         return jsonify({"detected": False, "message": "未检测到设备，请插入下一台温度计"})
-    dev = devices[0]
+    # 优先: 已插入的 U 盘设备（非 relay）
+    dev = next((d for d in devices if not d.get("_relay")), None)
+    if dev is None:
+        dev = devices[0]
     sn = dev.get("serial_number", dev["name"])
+    # 若该 SN 在 ComSoft 接力文件夹存在全量 vi2/CSV 存档，自动升级为全量数据
+    full = next((d for d in devices
+                 if d.get("_relay") and str(d.get("serial_number", "")).strip() == str(sn).strip()), None)
+    if full is not None and len(full.get("records") or []) > len(dev.get("records") or []):
+        dev = full
+        sn = dev.get("serial_number", dev["name"])
     recs = dev.get("records") or []
     temps = [_batch_temp_val(r.get("temperature")) for r in recs]
     temps = [t for t in temps if t is not None]
@@ -2048,11 +2173,25 @@ def batch_save():
     except Exception as e:
         return jsonify({"error": f"重新读取设备失败: {e}"}), 500
     dev = None
+    # 1) 优先精确匹配已插入设备；2) 再找该 SN 的全量 ComSoft 存档
     for d in devices:
         ds = d.get("serial_number", d["name"])
-        if ds == sn or (sn and sn in str(ds)):
+        if (ds == sn or (sn and sn in str(ds))) and not d.get("_relay"):
             dev = d
             break
+    if dev is not None:
+        full = next((d for d in devices
+                     if d.get("_relay") and str(d.get("serial_number", "")).strip() == str(dev["serial_number"]).strip()),
+                    None)
+        if full is not None and len(full.get("records") or []) > len(dev.get("records") or []):
+            dev = full
+    if dev is None:
+        # 3) 兜底：设备已拔，但接力文件夹有该 SN 的全量存档
+        for d in devices:
+            ds = d.get("serial_number", d["name"])
+            if ds == sn or (sn and sn in str(ds)):
+                dev = d
+                break
     if not dev:
         return jsonify({"error": "设备已断开，请重新插入后检测"}), 400
     ds = dev.get("serial_number", dev["name"])
@@ -2146,7 +2285,7 @@ def _export_batch_excel(devices):
         for j, r in enumerate(recs, 1):
             sheet.append([j, _batch_rec_time(r), r.get("temperature")])
     os.makedirs(EXPORT_DIR, exist_ok=True)
-    out = os.path.join(EXPORT_DIR, "温度计批量汇总_%s.xlsx" % datetime.now().strftime("%Y%m%d_%H%M%S"))
+    out = os.path.join(EXPORT_DIR, "Testo184_Batch_%s.xlsx" % datetime.now().strftime("%Y%m%d_%H%M%S"))
     wb.save(out)
     return out
 
