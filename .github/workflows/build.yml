@@ -42,4 +42,17 @@ jobs:
           cd pkg
           python -c "import shutil; shutil.make_archive('Testo184Tool-Windows-v${VERSION}', 'zip', '.', 'Testo184Tool-Windows.exe')"
           mv "Testo184Tool-Windows-v${VERSION}.zip" ..
-          ls -la ..
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: dist/Testo184Tool-Windows-v*.zip
+          name: ${{ github.ref_name }}
+          body: |
+            ## Testo 184 数据读取汇总工具 ${{ github.ref_name }}（Windows）
+            - 一键读取温度计数据并汇总 Excel
+            - 支持批量上传 .vi2 文件一键导出
+            - 免安装，下载 ZIP 解压后运行 .exe
+          draft: false
+          prerelease: false
