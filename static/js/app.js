@@ -771,6 +771,21 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-batch-export').addEventListener('click', batchExport);
     document.getElementById('btn-batch-clear').addEventListener('click', batchClear);
 
+    // === v3.1.0 批量上传 vi2 ===
+    const vdz = document.getElementById('vi2-dropzone');
+    const vfile = document.getElementById('vi2-file-input');
+    vdz.addEventListener('click', () => vfile.click());
+    vfile.addEventListener('change', (e) => { vi2UploadFiles(e.target.files); e.target.value = ''; });
+    ['dragenter', 'dragover'].forEach(ev => vdz.addEventListener(ev, (e) => {
+        e.preventDefault(); vdz.style.borderColor = '#27ae60'; vdz.style.background = '#eef9f0';
+    }));
+    ['dragleave', 'drop'].forEach(ev => vdz.addEventListener(ev, (e) => {
+        e.preventDefault(); vdz.style.borderColor = '#aab8c8'; vdz.style.background = '#f7fafc';
+    }));
+    vdz.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files) vi2UploadFiles(e.dataTransfer.files); });
+    document.getElementById('btn-vi2-export').addEventListener('click', vi2Export);
+    document.getElementById('btn-vi2-clear').addEventListener('click', vi2Clear);
+
     // Step 4
     document.getElementById('btn-export').addEventListener('click', exportExcel);
     document.getElementById('btn-new-session').addEventListener('click', newSession);
@@ -900,6 +915,95 @@ async function batchClear() {
     document.getElementById('btn-batch-start').disabled = false;
 }
 function setBatchStepHint(html) { document.getElementById('batch-step-hint').innerHTML = html; }
+
+// ─── v3.1.0 批量上传 .vi2 → 一键导出 Excel ────────────────────────────────
+async function vi2UploadFiles(fileList) {
+    if (!fileList || !fileList.length) return;
+    const dz = document.getElementById('vi2-dropzone');
+    const prog = document.getElementById('vi2-progress');
+    const bar = document.getElementById('vi2-progress-bar');
+    const txt = document.getElementById('vi2-progress-text');
+    prog.style.display = 'block';
+    txt.textContent = `正在上传解析 ${fileList.length} 个文件…(0/1)`;
+    bar.style.width = '0%';
+
+    const form = new FormData();
+    for (const f of fileList) {
+        if (f.name && f.name.toLowerCase().endsWith('.vi2')) form.append('file', f);
+    }
+    if (![...form.keys()].length) {
+        prog.style.display = 'none';
+        toast('请选择 .vi2 文件', 'error');
+        return;
+    }
+    try {
+        const r = await api('/api/vi2/upload', { method: 'POST', body: form, isForm: true });
+        const res = r;
+        bar.style.width = '100%';
+        txt.textContent = '解析完成。';
+        if (res.added && res.added.length) {
+            toast(`已成功解析 ${res.added.length} 个文件`, 'success');
+        } else {
+            toast('没有新设备被加入', 'error');
+        }
+        if (res.errors && res.errors.length) {
+            console.log('vi2 上传部分失败:', res.errors);
+        }
+        await vi2Refresh();
+    } catch (e) {
+        prog.style.display = 'none';
+        toast('上传失败: ' + e.message, 'error');
+    }
+}
+
+async function vi2Refresh() {
+    try {
+        const res = await api('/api/vi2/list', { method: 'GET' });
+        const devices = res.devices || [];
+        const box = document.getElementById('vi2-result');
+        const list = document.getElementById('vi2-list');
+        document.getElementById('vi2-count').textContent = devices.length;
+        if (!devices.length) {
+            box.style.display = 'none';
+            return;
+        }
+        box.style.display = 'block';
+        list.innerHTML = '<div style="font-size:13px;color:#666;margin-bottom:6px">已解析设备：</div>' +
+            devices.map((d, i) =>
+                '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;margin:5px 0;background:#f3f7fb;border-radius:8px;font-size:13px;flex-wrap:wrap;gap:6px">' +
+                '<span><b>#' + (i + 1) + '</b>　SN <b>' + esc(d.sn) + '</b>　—　' + d.record_count + ' 条</span>' +
+                '<span style="color:#888;font-size:12px">' + esc(d.file || '') + '</span>' +
+                '</div>').join('');
+        document.getElementById('vi2-export-note').textContent =
+            '共 ' + devices.length + ' 台设备，' + devices.reduce((a, d) => a + (d.record_count || 0), 0) + ' 条全量数据，可直接导出。';
+    } catch (e) {
+        toast('刷新列表失败: ' + e.message, 'error');
+    }
+}
+
+async function vi2Export() {
+    const box = document.getElementById('vi2-export-note');
+    try {
+        const res = await api('/api/vi2/export', { method: 'POST', body: {} });
+        if (!res.ok) { box.innerHTML = '<span style="color:#c0392b">导出失败：' + esc(res.error || '') + '</span>'; return; }
+        box.innerHTML = '✅ 已生成：<a href="/api/batch/download/' + encodeURIComponent(res.file) +
+            '" download="' + esc(res.file) + '"><b>📥 下载汇总 Excel（' + res.file + '）</b></a>';
+    } catch (e) {
+        box.innerHTML = '<span style="color:#c0392b">导出失败: ' + esc(e.message) + '</span>';
+    }
+}
+
+async function vi2Clear() {
+    try {
+        await api('/api/vi2/clear', { method: 'POST', body: {} });
+        document.getElementById('vi2-result').style.display = 'none';
+        document.getElementById('vi2-progress').style.display = 'none';
+        toast('已清空', 'success');
+    } catch (e) {
+        toast('清空失败: ' + e.message, 'error');
+    }
+}
+
 function setBatchList(devices) {
     const el = document.getElementById('batch-list');
     if (!devices || !devices.length) { el.innerHTML = '<div style="color:#666;font-size:13px">已读取设备列表为空</div>'; return; }

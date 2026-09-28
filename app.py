@@ -2290,6 +2290,90 @@ def _export_batch_excel(devices):
     return out
 
 
+# ─── v3.1.0 批量上传 .vi2 → 一键导出 Excel（独立于 session，直接全量解析） ───
+
+# 内存暂存：一次会话内上传的 vi2 设备（sn -> 数据）
+VI2_BATCH = {"devices": []}  # [{"sn","records","source","file"}]
+
+
+@app.route("/api/vi2/upload", methods=["POST"])
+def vi2_batch_upload():
+    """一次上传多个 .vi2，逐个全量解析，返回设备列表；同名 SN 不重复加入。"""
+    files = request.files.getlist("file")
+    if not files:
+        return jsonify({"error": "未收到文件"}), 400
+    tmp_dir = os.path.join(APP_DATA_DIR, "tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+    dexists = {d["sn"] for d in VI2_BATCH["devices"]}
+    added, errors = [], []
+    for file in files:
+        fname = file.filename or ""
+        if not fname.lower().endswith(".vi2"):
+            errors.append({"file": fname, "error": "仅支持 .vi2 文件"})
+            continue
+        tmp_path = os.path.join(tmp_dir, f"{uuid.uuid4().hex}.vi2")
+        try:
+            file.save(tmp_path)
+            data = parse_vi2(tmp_path)
+            sn = str(data.get("serial_number") or "未知").strip()
+            recs = data.get("records") or []
+            if not recs:
+                errors.append({"file": fname, "error": "未解析到数据"})
+                continue
+            if sn in dexists:
+                errors.append({"file": fname, "error": f"SN {sn} 已上传，跳过重复"})
+                continue
+            VI2_BATCH["devices"].append({
+                "sn": sn, "records": recs, "file": fname,
+                "source": "vi2全量(批量上传)",
+            })
+            dexists.add(sn)
+            added.append({
+                "file": fname, "sn": sn, "record_count": len(recs),
+                "unit": data.get("unit", "°C"),
+            })
+        except Exception as e:
+            errors.append({"file": fname, "error": str(e)})
+        finally:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+    return jsonify({
+        "ok": bool(added),
+        "added": added,
+        "errors": errors,
+        "device_count": len(VI2_BATCH["devices"]),
+    })
+
+
+@app.route("/api/vi2/list", methods=["GET"])
+def vi2_batch_list():
+    return jsonify({"devices": [
+        {"sn": d["sn"], "record_count": len(d["records"]), "source": d["source"], "file": d["file"]}
+        for d in VI2_BATCH["devices"]
+    ]})
+
+
+@app.route("/api/vi2/clear", methods=["POST"])
+def vi2_batch_clear():
+    VI2_BATCH["devices"] = []
+    return jsonify({"ok": True})
+
+
+@app.route("/api/vi2/export", methods=["POST"])
+def vi2_batch_export():
+    devices = [d for d in VI2_BATCH["devices"] if d.get("records")]
+    if not devices:
+        return jsonify({"error": "还没有已上传的设备，请先上传 .vi2 文件"}), 400
+    try:
+        path = _export_batch_excel(devices)
+    except Exception as e:
+        return jsonify({"error": f"导出失败: {e}"}), 500
+    return jsonify({"ok": True, "file": os.path.basename(path), "path": path,
+                    "device_count": len(devices)})
+
+
 if __name__ == "__main__":
     init_db()
     print()

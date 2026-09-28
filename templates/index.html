@@ -44,6 +44,11 @@
                 <div class="step-circle">4</div>
                 <div class="step-label">导出Excel</div>
             </div>
+            <div class="step-line"></div>
+            <div class="step-item" data-step="5">
+                <div class="step-circle">5</div>
+                <div class="step-label">批量vi2上传</div>
+            </div>
         </div>
 
         <!-- 主内容区 -->
@@ -236,6 +241,42 @@
                         </div>
 
                         <div id="batch-list" style="margin-top:14px"></div>
+                    </div>
+                </div>
+            </section>
+            <div style="height:8px"></div>
+
+            <!-- ===== v3.1.0 批量上传 vi2 直接导出 ===== -->
+            <section class="step-panel" id="panel-step5">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>📁 批量上传 .vi2 文件，一键导出 Excel</h2>
+                        <p class="card-desc">从 Testo Comfort Software 里导出的 .vi2 全量文件，可一次选多个，上传后直接导出到 Excel。无需逐台插拔。</p>
+                    </div>
+                    <div class="card-body">
+                        <div class="vi2-dropzone" id="vi2-dropzone" style="border:2px dashed #aab8c8;border-radius:12px;padding:36px 20px;text-align:center;background:#f7fafc;cursor:pointer;transition:.2s">
+                            <div style="font-size:40px">📂</div>
+                            <div style="font-size:16px;color:#445;margin-top:8px">点击选择 或 拖拽多个 .vi2 文件到此处</div>
+                            <div style="font-size:13px;color:#889;margin-top:6px">支持一次选择多个文件，自动解析全量数据</div>
+                            <input type="file" id="vi2-file-input" multiple accept=".vi2" style="display:none">
+                        </div>
+                        <div id="vi2-progress" style="margin-top:14px;display:none">
+                            <div class="muted" id="vi2-progress-text">正在上传解析…</div>
+                            <div style="background:#e5e9f0;border-radius:6px;height:10px;margin-top:8px;overflow:hidden">
+                                <div id="vi2-progress-bar" style="width:0%;height:100%;background:#27ae60;border-radius:6px;transition:width .3s"></div>
+                            </div>
+                        </div>
+                        <div id="vi2-result" style="margin-top:16px;display:none">
+                            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+                                <h3 style="margin:0;font-size:16px">📋 已读取的设备（<span id="vi2-count">0</span> 台）</h3>
+                                <div>
+                                    <button class="btn btn-primary btn-lg" id="btn-vi2-export">📤 导出汇总 Excel</button>
+                                    <button class="btn" id="btn-vi2-clear">↺ 清空重传</button>
+                                </div>
+                            </div>
+                            <div id="vi2-list" style="margin-top:12px"></div>
+                            <div class="muted" style="margin-top:10px;font-size:13px" id="vi2-export-note"></div>
+                        </div>
                     </div>
                 </div>
             </section>

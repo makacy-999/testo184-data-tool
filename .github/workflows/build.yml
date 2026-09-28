@@ -1,4 +1,4 @@
-name: Build Releases (macOS & Windows)
+name: Build Release (Windows)
 
 on:
   push:
@@ -10,14 +10,7 @@ permissions:
 
 jobs:
   build:
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            artifact_name: Testo184-Tool-macOS
-          - os: windows-latest
-            artifact_name: Testo184-Tool-Windows
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,12 +26,10 @@ jobs:
       - name: Build executable
         shell: bash
         run: |
-          SEP=":"
-          if [ "$RUNNER_OS" = "Windows" ]; then SEP=";"; fi
           pyinstaller --name Testo184Tool --onefile --noconsole \
-            --add-data "templates${SEP}templates" \
-            --add-data "static${SEP}static" \
-            --add-data "vi2_parser.py${SEP}." \
+            --add-data "templates;templates" \
+            --add-data "static;static" \
+            --add-data "vi2_parser.py;." \
             app.py
 
       - name: Package into ZIP
@@ -47,28 +38,8 @@ jobs:
           cd dist
           VERSION="${GITHUB_REF_NAME#v}"
           mkdir -p pkg
-          if [ "$RUNNER_OS" = "macOS" ]; then
-            chmod +x Testo184Tool
-            cp Testo184Tool "pkg/Testo184Tool-macOS"
-            cd pkg && zip -r "../Testo184Tool-macOS-v${VERSION}.zip" "Testo184Tool-macOS"
-          else
-            cp Testo184Tool.exe "pkg/Testo184Tool-Windows.exe"
-            cd pkg
-            python -c "import shutil; shutil.make_archive('Testo184Tool-Windows-v${VERSION}', 'zip', '.', 'Testo184Tool-Windows.exe')"
-            mv "Testo184Tool-Windows-v${VERSION}.zip" ..
-          fi
+          cp Testo184Tool.exe "pkg/Testo184Tool-Windows.exe"
+          cd pkg
+          python -c "import shutil; shutil.make_archive('Testo184Tool-Windows-v${VERSION}', 'zip', '.', 'Testo184Tool-Windows.exe')"
+          mv "Testo184Tool-Windows-v${VERSION}.zip" ..
           ls -la ..
-        env:
-          VERSION: ${{ github.ref_name }}
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.artifact_name }}
-          path: dist/*.zip
-
-      - name: Attach to Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*.zip
