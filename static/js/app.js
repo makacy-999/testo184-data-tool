@@ -761,6 +761,16 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btn-detect-comsoft').addEventListener('click', detectComsoft);
     prefillExportFolder();
 
+    // === v3.0.0 多温度计批量插拔读取 ===
+    document.getElementById('btn-batch-detect-cc4').addEventListener('click', detectCc4);
+    document.getElementById('btn-batch-launch-cc4').addEventListener('click', launchCc4);
+    document.getElementById('btn-batch-start').addEventListener('click', batchStart);
+    document.getElementById('btn-batch-detect').addEventListener('click', batchDetect);
+    document.getElementById('btn-batch-save').addEventListener('click', batchSave);
+    document.getElementById('btn-batch-next').addEventListener('click', batchNext);
+    document.getElementById('btn-batch-export').addEventListener('click', batchExport);
+    document.getElementById('btn-batch-clear').addEventListener('click', batchClear);
+
     // Step 4
     document.getElementById('btn-export').addEventListener('click', exportExcel);
     document.getElementById('btn-new-session').addEventListener('click', newSession);
@@ -792,3 +802,109 @@ document.addEventListener('DOMContentLoaded', () => {
     generatePoints();
     setStatus('就绪 - 请配置测点后开始');
 });
+
+/* ===== v3.0.0 多温度计批量插拔读取 ===== */
+function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function detectCc4() {
+    const info = document.getElementById('batch-cc4-info');
+    try {
+        const r = await fetch('/api/comsoft/detect').then(x => x.json());
+        const sw = (r.softwares || []).filter(s => s.exe || s.location);
+        if (!sw.length) info.innerHTML = '⚠️ 未检测到 cc4.exe / Comfort Software。<br>可手动在电脑上打开软件，或本工具仍可解析设备 PDF 报告读取数据。';
+        else info.innerHTML = '✅ 检测到：' + sw.map(s => esc(s.name || '软件')).join('、');
+    } catch (e) { info.textContent = '检测失败：' + e.message; }
+}
+async function launchCc4() {
+    const info = document.getElementById('batch-cc4-info');
+    try {
+        const r = await fetch('/api/comsoft/launch', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{}' }).then(x => x.json());
+        if (r.ok) info.innerHTML = '✅ 已启动：' + esc(r.launched || 'Comfort Software') + '<br>在软件里读取设备后，数据会自动被本工具识别并汇总。';
+        else info.textContent = r.error || '启动失败';
+    } catch (e) { info.textContent = '启动失败：' + e.message; }
+}
+async function batchStart() {
+    const r = await fetch('/api/batch/start', { method: 'POST' }).then(x => x.json());
+    document.getElementById('batch-wizard').style.display = 'block';
+    document.getElementById('btn-batch-detect').style.display = '';
+    document.getElementById('btn-batch-start').disabled = true;
+    document.getElementById('btn-batch-export').style.display = 'none';
+    document.getElementById('btn-batch-next').style.display = 'none';
+    document.getElementById('btn-batch-clear').style.display = '';
+    document.getElementById('batch-current').innerHTML = '';
+    setBatchList([]);
+    setBatchStepHint('① 批次已重置，请<b>插入第 1 台温度计</b>，然后点「🔍 检测当前设备」');
+}
+async function batchDetect() {
+    const box = document.getElementById('batch-current');
+    box.innerHTML = '检测中…';
+    const r = await fetch('/api/batch/detect', { method: 'POST' }).then(x => x.json());
+    if (!r.detected) {
+        box.innerHTML = '<div style="color:#c0392b">未检测到设备：' + esc(r.message || '') +
+            '<br>请确认温度计已插好（如需官方软件参与，可先点「🖥 检测 CC4」确认已就绪）。</div>';
+        return;
+    }
+    const d = r.device, sb = document.getElementById('btn-batch-save');
+    if (r.already) sb.style.display = 'none'; else { sb.style.display = ''; sb.dataset.sn = d.sn; }
+    box.innerHTML =
+        '<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;line-height:1.8;background:#fbfcfe">' +
+        '<b>SN:</b> ' + esc(d.sn) + (r.already ? ' <span style="color:#c0392b">(本批次已保存，可跳过)</span>' : '') +
+        '<br><b>数据来源:</b> ' + esc(d.source) +
+        '<br><b>记录条数:</b> ' + d.record_count + ' 条' +
+        '　<b>时间:</b> ' + esc(d.start_time || '—') + ' → ' + esc(d.end_time || '—') +
+        '<br><b>温度:</b> 最低 ' + (d.temp_min != null ? d.temp_min : '—') + '°C / 最高 ' +
+        (d.temp_max != null ? d.temp_max : '—') + '°C / 平均 ' + (d.temp_avg != null ? d.temp_avg : '—') + '°C</div>';
+}
+async function batchSave() {
+    const sn = document.getElementById('btn-batch-save').dataset.sn;
+    const box = document.getElementById('batch-current');
+    const r = await fetch('/api/batch/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sn }) }).then(x => x.json());
+    if (!r.ok) { box.innerHTML = '<div style="color:#c0392b">保存失败：' + esc(r.error || '') + '</div>'; return; }
+    document.getElementById('btn-batch-save').style.display = 'none';
+    if (r.duplicate) {
+        box.innerHTML = '<div style="color:#b26a00">该设备已在本批次中（跳过重复）。</div>';
+    } else {
+        box.innerHTML = '<div style="color:#1e7e34">✅ 本台已保存：<b>' + esc(r.sn || sn) + '</b>（' + r.record_count + ' 条）。<br>请<b>拔下这台，插入下一台</b>，或点「✔ 准备下一台」继续。</div>';
+    }
+    document.getElementById('btn-batch-next').style.display = '';
+    if (r.device_count) document.getElementById('btn-batch-export').style.display = '';
+    await refreshBatchList();
+}
+async function batchNext() {
+    document.getElementById('batch-current').innerHTML = '';
+    document.getElementById('btn-batch-next').style.display = 'none';
+    const r = await fetch('/api/batch/status').then(x => x.json());
+    const n = (r.devices || []).length;
+    setBatchList(r.devices || []);
+    setBatchStepHint('② 已保存 <b>' + n + '</b> 台。请<b>插入第 ' + (n + 1) + ' 台温度计</b>，然后点「🔍 检测当前设备」');
+    if (n >= 1) document.getElementById('btn-batch-export').style.display = '';
+}
+async function refreshBatchList() {
+    const r = await fetch('/api/batch/status').then(x => x.json());
+    setBatchList(r.devices || []);
+}
+async function batchExport() {
+    const box = document.getElementById('batch-current');
+    box.innerHTML = '正在生成汇总 Excel…';
+    const r = await fetch('/api/batch/export', { method: 'POST' }).then(x => x.json());
+    if (!r.ok) { box.innerHTML = '<div style="color:#c0392b">导出失败：' + esc(r.error || '') + '</div>'; return; }
+    const a = '/api/batch/download/' + encodeURIComponent(r.file);
+    box.innerHTML = '<div style="color:#1e7e34;line-height:1.9">✅ 已生成汇总 Excel（<b>' + r.device_count + '</b> 台设备）。<br>' +
+        '<a class="btn btn-primary" href="' + a + '" download>📥 下载 温度计批量汇总.xlsx</a></div>';
+}
+async function batchClear() {
+    await fetch('/api/batch/clear', { method: 'POST' });
+    document.getElementById('batch-wizard').style.display = 'none';
+    document.getElementById('batch-list').innerHTML = '';
+    document.getElementById('batch-current').innerHTML = '';
+    document.getElementById('btn-batch-start').disabled = false;
+}
+function setBatchStepHint(html) { document.getElementById('batch-step-hint').innerHTML = html; }
+function setBatchList(devices) {
+    const el = document.getElementById('batch-list');
+    if (!devices || !devices.length) { el.innerHTML = '<div style="color:#666;font-size:13px">已读取设备列表为空</div>'; return; }
+    el.innerHTML = '<div style="font-size:13px;color:#666;margin-bottom:6px">已读取设备：</div>' +
+        devices.map((d, i) =>
+            '<div style="padding:6px 10px;margin:4px 0;background:#f3f7fb;border-radius:6px;font-size:13px">' +
+            (i + 1) + '. <b>SN ' + esc(d.sn) + '</b> — ' + d.record_count + ' 条（' + esc(d.source || '') + '）</div>').join('');
+}

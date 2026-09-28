@@ -201,6 +201,46 @@
                 </div>
             </section>
 
+            <!-- ===== v3.0.0 多温度计批量插拔读取 ===== -->
+            <section class="step-panel" id="panel-batch">
+                <div class="card" style="border:2px solid #e2a93b">
+                    <div class="card-header">
+                        <h2>🧊 多温度计批量读取（逐台插拔）</h2>
+                        <p class="card-desc">
+                            每插一台温度计 → 检测 → 保存 → 拔下换下一台，全部读完一键导出汇总 Excel。
+                            读数优先来自本地 <b>Comfort Software (cc4.exe)</b> 与设备自带 PDF 报告（含每分钟温度）。
+                        </p>
+                    </div>
+                    <div class="card-body">
+                        <div class="batch-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+                            <button class="btn" id="btn-batch-detect-cc4">🖥 检测 CC4 / Comfort Software</button>
+                            <button class="btn" id="btn-batch-launch-cc4">▶ 启动 cc4.exe</button>
+                            <button class="btn btn-success btn-lg" id="btn-batch-start">🚀 开始批量读取</button>
+                        </div>
+                        <div id="batch-cc4-info" class="muted" style="margin-top:10px;font-size:13px;color:#666"></div>
+
+                        <div id="batch-wizard" style="margin-top:16px;display:none">
+                            <div style="padding:12px 14px;background:#fff8e6;border:1px dashed #d9a34b;border-radius:8px;line-height:1.7" id="batch-step-hint">
+                                ① 点击「🚀 开始批量读取」后，<b>插入第 1 台温度计</b>
+                            </div>
+                            <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
+                                <button class="btn btn-primary" id="btn-batch-detect">🔍 检测当前设备</button>
+                                <button class="btn btn-success" id="btn-batch-save" style="display:none">💾 保存这台设备</button>
+                            </div>
+                            <div id="batch-current" style="margin-top:12px"></div>
+                            <div id="batch-done-actions" style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap">
+                                <button class="btn" id="btn-batch-next" style="display:none">✔ 已保存，准备下一台</button>
+                                <button class="btn btn-primary btn-lg" id="btn-batch-export" style="display:none">📤 全部完成，导出汇总 Excel</button>
+                                <button class="btn" id="btn-batch-clear" style="display:none">↺ 重新开始</button>
+                            </div>
+                        </div>
+
+                        <div id="batch-list" style="margin-top:14px"></div>
+                    </div>
+                </div>
+            </section>
+            <div style="height:8px"></div>
+
             <!-- Step 3: 数据汇总 -->
             <section class="step-panel" id="panel-step3">
                 <div class="card">

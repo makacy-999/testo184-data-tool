@@ -1835,7 +1835,7 @@ def _find_testo_exes():
                 continue
             for f in files:
                 fl = f.lower()
-                if fl.endswith(".exe") and ("comsoft" in fl or "testo" in fl):
+                if fl.endswith(".exe") and ("comsoft" in fl or "testo" in fl or fl.startswith("cc4")):
                     exes.append(os.path.join(root, f))
     return exes
 
@@ -1960,6 +1960,196 @@ def get_point_data(session_id, point_number):
 
 
 # ─── 启动 ─────────────────────────────────────────────────────────────────────
+
+
+# ─────────────────────────── v3.0.0 多设备批量插拔读取 ───────────────────────────
+BATCH = {"id": None, "devices": [], "running": False}
+
+
+def _batch_source(dev):
+    if dev.get("csv_files"):
+        return "CSV"
+    try:
+        if any(f.lower().endswith(".vi2")
+               for _, _, fs in os.walk(dev["path"]) for f in fs):
+            return "vi2存档(ComSoft导出)"
+    except OSError:
+        pass
+    return "PDF报告(每分钟)" if dev.get("pdf_files") else "无"
+
+
+def _batch_temp_val(temp):
+    try:
+        t = str(temp).replace(",", ".").replace("\u00b0C", "").replace("\u00b0F", "").strip()
+        return float(t)
+    except (ValueError, AttributeError):
+        return None
+
+
+def _batch_rec_time(r):
+    d = r.get("date") or ""
+    t = r.get("time") or ""
+    if ":" in d:
+        return d
+    return (d + " " + t).strip()
+
+
+@app.route("/api/batch/start", methods=["POST"])
+def batch_start():
+    import time as _t
+    BATCH["id"] = str(int(_t.time() * 1000))
+    BATCH["devices"] = []
+    BATCH["running"] = True
+    return jsonify({"ok": True, "batch_id": BATCH["id"]})
+
+
+@app.route("/api/batch/detect", methods=["POST"])
+def batch_detect():
+    if not BATCH.get("running"):
+        return jsonify({"error": "批次尚未开始，请先点击开始批量读取"}), 400
+    try:
+        devices = DeviceDetector.scan()
+    except Exception as e:
+        return jsonify({"error": f"检测失败: {e}"}), 500
+    if not devices:
+        return jsonify({"detected": False, "message": "未检测到设备，请插入下一台温度计"})
+    dev = devices[0]
+    sn = dev.get("serial_number", dev["name"])
+    recs = dev.get("records") or []
+    temps = [_batch_temp_val(r.get("temperature")) for r in recs]
+    temps = [t for t in temps if t is not None]
+    seen = {d["sn"] for d in BATCH["devices"]}
+    return jsonify({
+        "detected": True,
+        "already": sn in seen,
+        "device": {
+            "sn": sn,
+            "name": dev["name"],
+            "path": dev["path"],
+            "record_count": len(recs),
+            "source": _batch_source(dev),
+            "start_time": _batch_rec_time(recs[0]) if recs else None,
+            "end_time": _batch_rec_time(recs[-1]) if recs else None,
+            "temp_min": round(min(temps), 2) if temps else None,
+            "temp_max": round(max(temps), 2) if temps else None,
+            "temp_avg": round(sum(temps) / len(temps), 2) if temps else None,
+            "preview": recs[:5],
+            "scan_log": dev.get("scan_log", []),
+        },
+    })
+
+
+@app.route("/api/batch/save", methods=["POST"])
+def batch_save():
+    data = request.get_json(silent=True) or {}
+    sn = (data.get("sn") or "").strip()
+    try:
+        devices = DeviceDetector.scan()
+    except Exception as e:
+        return jsonify({"error": f"重新读取设备失败: {e}"}), 500
+    dev = None
+    for d in devices:
+        ds = d.get("serial_number", d["name"])
+        if ds == sn or (sn and sn in str(ds)):
+            dev = d
+            break
+    if not dev:
+        return jsonify({"error": "设备已断开，请重新插入后检测"}), 400
+    ds = dev.get("serial_number", dev["name"])
+    if any(x["sn"] == ds for x in BATCH["devices"]):
+        return jsonify({"ok": True, "duplicate": True, "device_count": len(BATCH["devices"])})
+    BATCH["devices"].append({
+        "sn": ds,
+        "records": dev.get("records") or [],
+        "source": _batch_source(dev),
+    })
+    return jsonify({
+        "ok": True, "duplicate": False,
+        "device_count": len(BATCH["devices"]),
+        "record_count": len(dev.get("records") or []),
+        "sn": ds,
+    })
+
+
+@app.route("/api/batch/status", methods=["GET"])
+def batch_status():
+    return jsonify({
+        "running": BATCH.get("running", False),
+        "batch_id": BATCH.get("id"),
+        "batch_ids": [d["sn"] for d in BATCH["devices"]],
+        "devices": [
+            {"sn": d["sn"], "record_count": len(d["records"]), "source": d["source"]}
+            for d in BATCH["devices"]
+        ],
+    })
+
+
+@app.route("/api/batch/export", methods=["POST"])
+def batch_export():
+    devices = [d for d in BATCH["devices"] if d["records"]]
+    if not devices:
+        return jsonify({"error": "批次中还没有已读取的设备数据，请先逐台检测并保存"}), 400
+    try:
+        path = _export_batch_excel(devices)
+    except Exception as e:
+        return jsonify({"error": f"导出失败: {e}"}), 500
+    return jsonify({"ok": True, "file": os.path.basename(path), "path": path,
+                    "device_count": len(devices)})
+
+
+@app.route("/api/batch/clear", methods=["POST"])
+def batch_clear():
+    BATCH["running"] = False
+    BATCH["devices"] = []
+    return jsonify({"ok": True})
+
+
+@app.route("/api/batch/download/<filename>", methods=["GET"])
+def batch_download(filename):
+    safe = os.path.basename(filename)
+    fp = os.path.join(EXPORT_DIR, safe)
+    if not os.path.isfile(fp):
+        return jsonify({"error": "文件不存在"}), 404
+    return send_file(fp, as_attachment=True, download_name=safe)
+
+
+def _export_batch_excel(devices):
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "汇总"
+    hdr = ["设备序号", "序列号(SN)", "数据来源", "记录条数", "开始时间", "结束时间",
+           "最低温(°C)", "最高温(°C)", "平均温(°C)"]
+    ws.append(hdr)
+    hdr_fill = PatternFill("solid", fgColor="4472C4")
+    for c in range(1, len(hdr) + 1):
+        cell = ws.cell(1, c)
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = hdr_fill
+    for i, d in enumerate(devices, 1):
+        recs = d["records"]
+        temps = [_batch_temp_val(r.get("temperature")) for r in recs]
+        temps = [t for t in temps if t is not None]
+        ws.append([
+            i, d["sn"], d["source"], len(recs),
+            _batch_rec_time(recs[0]) if recs else "",
+            _batch_rec_time(recs[-1]) if recs else "",
+            round(min(temps), 2) if temps else "",
+            round(max(temps), 2) if temps else "",
+            round(sum(temps) / len(temps), 2) if temps else "",
+        ])
+        sheet = wb.create_sheet("SN_" + str(d["sn"])[-8:])
+        sheet.append(["序号", "时间", "温度(°C)"])
+        for c in range(1, 4):
+            sheet.cell(1, c).font = Font(bold=True)
+        for j, r in enumerate(recs, 1):
+            sheet.append([j, _batch_rec_time(r), r.get("temperature")])
+    os.makedirs(EXPORT_DIR, exist_ok=True)
+    out = os.path.join(EXPORT_DIR, "温度计批量汇总_%s.xlsx" % datetime.now().strftime("%Y%m%d_%H%M%S"))
+    wb.save(out)
+    return out
+
 
 if __name__ == "__main__":
     init_db()
