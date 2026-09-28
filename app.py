@@ -2374,6 +2374,62 @@ def vi2_batch_export():
                     "device_count": len(devices)})
 
 
+# ─── v3.2.0 统一数据池：两种读取方式(设备读取/vi2批量导入)合并，一键导出 ───
+
+def _unified_devices():
+    """合并 设备读取(BATCH) + vi2批量导入(VI2_BATCH)，按 SN 去重，优先取记录更全者。"""
+    merged = {}
+    for d in BATCH.get("devices", []):
+        sn = str(d.get("sn") or "").strip()
+        if not sn:
+            continue
+        cur = merged.get(sn)
+        if cur is None or len(d.get("records") or []) > len(cur.get("records") or []):
+            merged[sn] = dict(d)
+    for d in VI2_BATCH.get("devices", []):
+        sn = str(d.get("sn") or "").strip()
+        if not sn:
+            continue
+        cur = merged.get(sn)
+        if cur is None or len(d.get("records") or []) > len(cur.get("records") or []):
+            merged[sn] = dict(d, sn=sn)
+    return list(merged.values())
+
+
+@app.route("/api/all/list", methods=["GET"])
+def all_devices_list():
+    return jsonify({"devices": [
+        {"sn": d.get("sn"), "record_count": len(d.get("records") or []),
+         "source": d.get("source", ""), "file": d.get("file", "")}
+        for d in _unified_devices()
+    ]})
+
+
+@app.route("/api/all/export", methods=["POST"])
+def all_devices_export():
+    devices = [d for d in _unified_devices() if d.get("records")]
+    if not devices:
+        return jsonify({"error": "还没有数据。请在「读取设备」或「批量导入vi2」中先读取/导入数据。"}), 400
+    try:
+        path = _export_batch_excel(devices)
+    except Exception as e:
+        return jsonify({"error": f"导出失败: {e}"}), 500
+    fname = os.path.basename(path)
+    total = sum(len(d.get("records") or []) for d in devices)
+    return jsonify({"ok": True, "file": fname, "path": path,
+                    "device_count": len(devices), "record_count": total,
+                    "count": len(devices), "records": total,
+                    "filename": fname,
+                    "url": "/api/batch/download/" + fname})
+
+@app.route("/api/all/clear", methods=["POST"])
+def all_devices_clear():
+    BATCH["devices"] = []
+    BATCH["running"] = False
+    VI2_BATCH["devices"] = []
+    return jsonify({"ok": True})
+
+
 if __name__ == "__main__":
     init_db()
     print()

@@ -70,6 +70,20 @@ function goToStep(step) {
     document.getElementById(`panel-step${step}`).classList.add('active');
 }
 
+// ─── v3.2.0 统一模式导航：read=读设备 / vi2=导入vi2 / export=分析导出 ───
+function switchTo(mode) {
+    state.currentMode = mode;
+    const map = { read: 'panel-read', vi2: 'panel-vi2', export: 'panel-export' };
+    document.querySelectorAll('.step-item').forEach(el => {
+        el.classList.remove('active', 'done');
+        if (el.getAttribute('data-mode') === mode) el.classList.add('active');
+    });
+    document.querySelectorAll('.step-panel').forEach(p => p.classList.remove('active'));
+    const pid = map[mode];
+    if (pid && document.getElementById(pid)) document.getElementById(pid).classList.add('active');
+    if (mode === 'export') refreshAll();
+}
+
 // ─── Step 1: 配置测点 ─────────────────────────────────────────────────────
 function generatePoints() {
     const count = parseInt(document.getElementById('point-count').value) || 1;
@@ -748,32 +762,29 @@ async function deleteSession(sessionId) {
 
 // ─── 事件绑定 ──────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    // Step 1
-    document.getElementById('btn-gen-points').addEventListener('click', generatePoints);
-    document.getElementById('btn-start-reading').addEventListener('click', startReading);
+    const $ = (id) => document.getElementById(id);
 
-    // Step 2
-    document.getElementById('btn-scan').addEventListener('click', scanDevice);
-    document.getElementById('btn-confirm-read').addEventListener('click', confirmRead);
-    document.getElementById('btn-import-vi2').addEventListener('click', importVi2);
-    document.getElementById('btn-watch').addEventListener('click', startWatch);
-    document.getElementById('btn-open-folder').addEventListener('click', openExportFolder);
-    document.getElementById('btn-detect-comsoft').addEventListener('click', detectComsoft);
-    prefillExportFolder();
+    // === 统一模式导航（read / vi2 / export）===
+    document.querySelectorAll('.step-item').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            const mode = el.getAttribute('data-mode');
+            if (mode) switchTo(mode);
+        });
+    });
 
-    // === v3.0.0 多温度计批量插拔读取 ===
-    document.getElementById('btn-batch-detect-cc4').addEventListener('click', detectCc4);
-    document.getElementById('btn-batch-launch-cc4').addEventListener('click', launchCc4);
-    document.getElementById('btn-batch-start').addEventListener('click', batchStart);
-    document.getElementById('btn-batch-detect').addEventListener('click', batchDetect);
-    document.getElementById('btn-batch-save').addEventListener('click', batchSave);
-    document.getElementById('btn-batch-next').addEventListener('click', batchNext);
-    document.getElementById('btn-batch-export').addEventListener('click', batchExport);
-    document.getElementById('btn-batch-clear').addEventListener('click', batchClear);
+    // === 方式一：读取温度计设备 ===
+    $('btn-batch-detect-cc4').addEventListener('click', detectCc4);
+    $('btn-batch-launch-cc4').addEventListener('click', launchCc4);
+    $('btn-batch-start').addEventListener('click', batchStart);
+    $('btn-batch-detect').addEventListener('click', batchDetect);
+    $('btn-batch-save').addEventListener('click', batchSave);
+    $('btn-batch-next').addEventListener('click', batchNext);
+    $('btn-batch-clear').addEventListener('click', batchClear);
 
-    // === v3.1.0 批量上传 vi2 ===
-    const vdz = document.getElementById('vi2-dropzone');
-    const vfile = document.getElementById('vi2-file-input');
+    // === 方式二：批量上传 vi2 ===
+    const vdz = $('vi2-dropzone');
+    const vfile = $('vi2-file-input');
     vdz.addEventListener('click', () => vfile.click());
     vfile.addEventListener('change', (e) => { vi2UploadFiles(e.target.files); e.target.value = ''; });
     ['dragenter', 'dragover'].forEach(ev => vdz.addEventListener(ev, (e) => {
@@ -783,39 +794,16 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault(); vdz.style.borderColor = '#aab8c8'; vdz.style.background = '#f7fafc';
     }));
     vdz.addEventListener('drop', (e) => { if (e.dataTransfer && e.dataTransfer.files) vi2UploadFiles(e.dataTransfer.files); });
-    document.getElementById('btn-vi2-export').addEventListener('click', vi2Export);
-    document.getElementById('btn-vi2-clear').addEventListener('click', vi2Clear);
 
-    // Step 4
-    document.getElementById('btn-export').addEventListener('click', exportExcel);
-    document.getElementById('btn-new-session').addEventListener('click', newSession);
+    // === 统一数据池：分析并导出 ===
+    $('btn-all-export').addEventListener('click', allExport);
+    $('btn-all-refresh').addEventListener('click', refreshAll);
+    $('btn-all-clear').addEventListener('click', allClear);
 
-    // Step 3 → Step 4 衔接
-    document.getElementById('btn-to-export').addEventListener('click', () => {
-        // 勾选数量
-        const checked = document.querySelectorAll('.point-check:checked').length;
-        if (checked === 0) {
-            toast('请先勾选要导出的设备（有数据的测点会自动勾选）', 'warning');
-            return;
-        }
-        const hint = document.getElementById('export-hint');
-        if (hint) hint.textContent = `将导出所勾选的 ${checked} 台设备`;
-        goToStep(4);
-        setStatus('请点击导出 Excel 文件');
-    });
-    document.getElementById('btn-close-detail').addEventListener('click', () => {
-        document.getElementById('summary-detail').style.display = 'none';
-    });
-
-    // History
-    document.getElementById('btn-history').addEventListener('click', showHistory);
-    document.getElementById('btn-close-history').addEventListener('click', () => {
-        document.getElementById('modal-history').style.display = 'none';
-    });
-
-    // 初始化测点
-    generatePoints();
-    setStatus('就绪 - 请配置测点后开始');
+    // 初始化：显示方式一，刷新统一列表
+    switchTo('read');
+    refreshAll();
+    setStatus('就绪 - 选择上方任一方式读取数据，再到「分析并导出Excel」');
 });
 
 /* ===== v3.0.0 多温度计批量插拔读取 ===== */
@@ -943,62 +931,85 @@ async function vi2UploadFiles(fileList) {
         txt.textContent = '解析完成。';
         if (res.added && res.added.length) {
             toast(`已成功解析 ${res.added.length} 个文件`, 'success');
+            // 上传成功 → 立即跳转统一导出页并刷新
+            switchTo('export');
         } else {
             toast('没有新设备被加入', 'error');
         }
         if (res.errors && res.errors.length) {
-            console.log('vi2 上传部分失败:', res.errors);
+            const msg = document.getElementById('vi2-msg');
+            if (msg) msg.innerHTML = '⚠️ ' + res.errors.length + ' 个文件未加入：' + res.errors.slice(0, 3).map(e => esc(e.file) + ' - ' + esc(e.error)).join('；');
         }
-        await vi2Refresh();
     } catch (e) {
         prog.style.display = 'none';
         toast('上传失败: ' + e.message, 'error');
     }
 }
 
-async function vi2Refresh() {
+/* ===== v3.2.0 统一数据池 refreshAll（合并 设备读取 + vi2导入） ===== */
+async function refreshAll() {
     try {
-        const res = await api('/api/vi2/list', { method: 'GET' });
+        const res = await api('/api/all/list', { method: 'GET' });
         const devices = res.devices || [];
-        const box = document.getElementById('vi2-result');
-        const list = document.getElementById('vi2-list');
-        document.getElementById('vi2-count').textContent = devices.length;
+        const box = document.getElementById('all-list');
+        const count = document.getElementById('exp-count');
+        const rec = document.getElementById('exp-records');
+        const src = document.getElementById('exp-source');
+        if (count) count.textContent = devices.length;
+        let total = 0; const srcs = new Set();
+        devices.forEach(d => { total += (d.records || d.record_count || 0); if (d.source) srcs.add(d.source); });
+        if (rec) rec.textContent = total;
+        if (src) src.textContent = srcs.size ? [...srcs].join(' / ') : '—';
         if (!devices.length) {
-            box.style.display = 'none';
+            box.innerHTML = '<div style="padding:20px;background:#f7f9fb;border-radius:8px;color:#666;text-align:center">暂无数据。<br>请先通过 <b>方式一读取设备</b> 或 <b>方式二导入 .vi2</b> 添加数据，再回到这里分析导出。</div>';
             return;
         }
-        box.style.display = 'block';
-        list.innerHTML = '<div style="font-size:13px;color:#666;margin-bottom:6px">已解析设备：</div>' +
+        box.innerHTML = '<div style="font-size:13px;color:#666;margin-bottom:6px">已收集设备：</div>' +
             devices.map((d, i) =>
                 '<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 12px;margin:5px 0;background:#f3f7fb;border-radius:8px;font-size:13px;flex-wrap:wrap;gap:6px">' +
-                '<span><b>#' + (i + 1) + '</b>　SN <b>' + esc(d.sn) + '</b>　—　' + d.record_count + ' 条</span>' +
-                '<span style="color:#888;font-size:12px">' + esc(d.file || '') + '</span>' +
+                '<span><b>#' + (i + 1) + '</b>　SN <b>' + esc(d.serial_number || d.sn || '') + '</b>　—　' + (d.records || d.record_count || 0) + ' 条</span>' +
+                '<span style="color:#888;font-size:12px">' + esc(d.source || '') + (d.file ? ' · ' + esc(d.file) : '') + '</span>' +
                 '</div>').join('');
-        document.getElementById('vi2-export-note').textContent =
-            '共 ' + devices.length + ' 台设备，' + devices.reduce((a, d) => a + (d.record_count || 0), 0) + ' 条全量数据，可直接导出。';
     } catch (e) {
-        toast('刷新列表失败: ' + e.message, 'error');
+        const box = document.getElementById('all-list');
+        if (box) box.innerHTML = '<span style="color:#c0392b">刷新失败: ' + esc(e.message) + '</span>';
     }
 }
 
-async function vi2Export() {
-    const box = document.getElementById('vi2-export-note');
+/* ===== v3.2.0 统一导出 allExport ===== */
+async function allExport() {
+    const box = document.getElementById('all-export-note');
+    const btn = document.getElementById('btn-all-export');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ 正在生成 Excel…';
     try {
-        const res = await api('/api/vi2/export', { method: 'POST', body: {} });
+        const res = await api('/api/all/export', { method: 'POST', body: {} });
         if (!res.ok) { box.innerHTML = '<span style="color:#c0392b">导出失败：' + esc(res.error || '') + '</span>'; return; }
-        box.innerHTML = '✅ 已生成：<a href="/api/batch/download/' + encodeURIComponent(res.file) +
-            '" download="' + esc(res.file) + '"><b>📥 下载汇总 Excel（' + res.file + '）</b></a>';
+        box.innerHTML = '✅ 已生成 <b>' + res.count + '</b> 台设备、共 <b>' + res.records + '</b> 条数据的汇总 Excel：<br><br>' +
+            '<a class="btn btn-primary btn-lg" href="' + res.url + '" download="' + esc(res.filename || 'Testo184_Batch.xlsx') + '" style="display:inline-block">📥 下载 Excel</a>' +
+            '<div style="font-size:12px;color:#666;margin-top:6px">文件名：' + esc(res.filename || 'Testo184_Batch.xlsx') + '</div>';
     } catch (e) {
         box.innerHTML = '<span style="color:#c0392b">导出失败: ' + esc(e.message) + '</span>';
     }
+    btn.disabled = false;
+    btn.textContent = '📥 分析并导出 Excel';
 }
 
-async function vi2Clear() {
+/* ===== v3.2.0 统一清空 allClear ===== */
+async function allClear() {
+    if (!confirm('确定清空全部已读取/已导入的数据吗？')) return;
     try {
-        await api('/api/vi2/clear', { method: 'POST', body: {} });
-        document.getElementById('vi2-result').style.display = 'none';
+        await api('/api/all/clear', { method: 'POST', body: {} });
+        document.getElementById('batch-wizard').style.display = 'none';
+        document.getElementById('batch-list').innerHTML = '';
+        document.getElementById('batch-current').innerHTML = '';
+        document.getElementById('btn-batch-start').disabled = false;
         document.getElementById('vi2-progress').style.display = 'none';
-        toast('已清空', 'success');
+        document.getElementById('vi2-msg').innerHTML = '';
+        document.getElementById('all-export-note').innerHTML = '';
+        await refreshAll();
+        toast('已清空全部数据', 'success');
     } catch (e) {
         toast('清空失败: ' + e.message, 'error');
     }

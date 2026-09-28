@@ -23,198 +23,33 @@
             </div>
         </header>
 
-        <!-- 步骤进度条 -->
-        <div class="steps-bar">
-            <div class="step-item active" data-step="1">
+        <!-- 步骤进度条：两种读取方式 + 统一分析导出 -->
+        <div class="steps-bar" id="steps-bar">
+            <div class="step-item active" data-mode="read">
                 <div class="step-circle">1</div>
-                <div class="step-label">配置测点</div>
-            </div>
-            <div class="step-line"></div>
-            <div class="step-item" data-step="2">
-                <div class="step-circle">2</div>
                 <div class="step-label">读取设备</div>
             </div>
             <div class="step-line"></div>
-            <div class="step-item" data-step="3">
+            <div class="step-item" data-mode="vi2">
+                <div class="step-circle">2</div>
+                <div class="step-label">批量导入vi2</div>
+            </div>
+            <div class="step-line"></div>
+            <div class="step-item" data-mode="export">
                 <div class="step-circle">3</div>
-                <div class="step-label">数据汇总</div>
-            </div>
-            <div class="step-line"></div>
-            <div class="step-item" data-step="4">
-                <div class="step-circle">4</div>
-                <div class="step-label">导出Excel</div>
-            </div>
-            <div class="step-line"></div>
-            <div class="step-item" data-step="5">
-                <div class="step-circle">5</div>
-                <div class="step-label">批量vi2上传</div>
+                <div class="step-label">分析导出</div>
             </div>
         </div>
 
         <!-- 主内容区 -->
         <main class="main-content">
 
-            <!-- Step 1: 配置测点 -->
-            <section class="step-panel active" id="panel-step1">
-                <div class="card">
+            <!-- ===== 方式一：读取温度计设备 ===== -->
+            <section class="step-panel active" id="panel-read">
+                <div class="card" style="border:2px solid #4a90d9">
                     <div class="card-header">
-                        <h2>📝 配置测点信息</h2>
-                        <p class="card-desc">请输入所有测点编号，之后逐个插入温度计读取数据。测点号将与设备 SN 号对应。</p>
-                    </div>
-                    <div class="card-body">
-                        <div class="form-row">
-                            <label>会话名称（可选）</label>
-                            <input type="text" id="session-name" placeholder="例如：2026年9月冷链运输监测" class="input">
-                        </div>
-                        <div class="form-row">
-                            <label>测点数量</label>
-                            <div class="input-group">
-                                <input type="number" id="point-count" min="1" max="100" value="5" class="input input-number">
-                                <button class="btn btn-primary" id="btn-gen-points">生成测点</button>
-                            </div>
-                        </div>
-                        <div class="points-grid" id="points-grid">
-                            <!-- 动态生成测点输入 -->
-                        </div>
-                        <div class="card-actions">
-                            <button class="btn btn-primary btn-lg" id="btn-start-reading">
-                                开始读取设备 →
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Step 2: 读取设备 -->
-            <section class="step-panel" id="panel-step2">
-                <div class="card">
-                    <div class="card-header">
-                        <h2>🔌 读取设备</h2>
-                        <p class="card-desc">按照提示依次插入温度计，每次读取一个设备。</p>
-                    </div>
-                    <div class="card-body">
-                        <!-- 进度指示 -->
-                        <div class="read-progress">
-                            <div class="progress-bar">
-                                <div class="progress-fill" id="read-progress-fill" style="width: 0%"></div>
-                            </div>
-                            <div class="progress-text" id="read-progress-text">0 / 0 已读取</div>
-                        </div>
-
-                        <!-- 当前操作区 -->
-                        <div class="read-area" id="read-area">
-                            <div class="current-point-info" id="current-point-info">
-                                <div class="point-badge" id="current-point-badge">测点 #1</div>
-                                <div class="point-status" id="current-point-status">请插入温度计，然后点击"扫描设备"</div>
-                            </div>
-
-                            <div class="read-actions">
-                                <button class="btn btn-primary btn-lg" id="btn-scan">
-                                    🔍 扫描设备
-                                </button>
-                                <button class="btn btn-success btn-lg" id="btn-confirm-read" style="display:none">
-                                    ✅ 确认读取此设备
-                                </button>
-                            </div>
-
-                            <!-- 设备检测结果显示 -->
-                            <div class="device-result" id="device-result" style="display:none">
-                                <div class="device-info-card">
-                                    <div class="device-info-row">
-                                        <span class="device-label">设备名称</span>
-                                        <span class="device-value" id="dev-name">-</span>
-                                    </div>
-                                    <div class="device-info-row">
-                                        <span class="device-label">SN 号</span>
-                                        <input type="text" class="input" id="dev-sn" placeholder="自动识别，可手动修改" value="-">
-                                    </div>
-                                    <div class="device-info-row">
-                                        <span class="device-label">数据量</span>
-                                        <span class="device-value" id="dev-count">-</span>
-                                    </div>
-                                    <div class="device-info-row">
-                                        <span class="device-label">文件处理明细</span>
-                                        <span class="device-value" id="dev-files">-</span>
-                                    </div>
-                                </div>
-                                <!-- 数据预览 -->
-                                <div class="preview-section">
-                                    <h4>📊 数据预览（前20条）</h4>
-                                    <div class="preview-table-wrap">
-                                        <table class="preview-table" id="preview-table">
-                                            <thead><tr></tr></thead>
-                                            <tbody></tbody>
-                                        </table>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 已读取设备列表 -->
-                        <div class="read-devices-list" id="read-devices-list" style="display:none">
-                            <h3>✅ 已读取的设备</h3>
-                            <div id="devices-done-list"></div>
-                        </div>
-
-                        <!-- 数据文件导入（无设备时直接导入导出文件） -->
-                        <div class="vi2-import" id="vi2-import-box" style="margin-top:28px;padding-top:20px;border-top:1px dashed #ddd">
-                            <h3>📁 直接导入数据文件（.vi2 / .xml / .xdp / PDF 报告）</h3>
-                            <p class="card-desc">设备插上读不到数据？把温度计 U 盘里的文件直接拖进来：<code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">testo 184 measurement report</code>（图形报告，自动从曲线提取数据）、<code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">testo 184 configuration_数据.xdp</code>（XML 数据包）、Testo 软件导出的 <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.vi2</code> / <code style="background:#f4f6f8;padding:1px 6px;border-radius:4px">.xml</code> 都支持，自动读取全部温度数据并转为 Excel。</p>
-                            <div class="vi2-hint" id="vi2-hint" style="display:none;background:#fff8e1;border:1px solid #f0c36d;color:#7a5c00;padding:10px 14px;border-radius:8px;margin-bottom:12px;font-size:13px;line-height:1.6">
-                                ⚠️ 已检测到设备，但未读取到温度数据。把温度计 U 盘里的 <code>testo 184 measurement report</code>（图形报告）或 <code>configuration_数据.xdp</code> 拖到下方导入即可；<code>.vi2</code> / <code>.xml</code> 文件也可以。
-                            </div>
-                            <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                                <input type="file" id="vi2-file-input" accept=".vi2, .xdp, .xml, .pdf, .bin, .dat" multiple class="input" style="flex:1;min-width:200px">
-                                <button class="btn btn-success btn-lg" id="btn-import-vi2">
-                                    📥 导入并读取数据
-                                </button>
-                            </div>
-                            <div class="vi2-msg" id="vi2-msg" style="margin-top:10px;font-size:13px;color:#666"></div>
-                        </div>
-
-                        <!-- Testo / ComSoft 软件联动：监控导出目录，自动导入 -->
-                        <div class="comsoft-link" id="comsoft-box" style="margin-top:24px;padding-top:20px;border-top:1px dashed #ddd">
-                            <h3>🔄 官方 ComSoft 联动（读取温度计内全部数据）</h3>
-                            <p class="card-desc">
-                                温度计内部存有<b>全部测量数据</b>，但插 USB 只生成精简 PDF 报告（曲线最多 324 点）；
-                                全量数据需官方软件 ComSoft <b>Professional 专业版</b>读取（Basic 基础版不支持 184）。
-                                流程：点「一键调用官方软件」→ 在 ComSoft 里<b>连接并读取温度计</b> →
-                                把数据<b>保存/导出</b>到下方文件夹（.vi2 或 CSV 均可）→ 本工具<b>自动抓取、解析并汇总</b>，多台设备依次保存即可。
-                            </p>
-                            <div class="read-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                                <input type="text" id="watch-dir" class="input" placeholder="ComSoft 保存数据文件的文件夹（已为你预填推荐目录）" style="flex:1;min-width:220px">
-                                <button class="btn btn-primary" id="btn-watch">🔄 开始监控</button>
-                                <button class="btn" id="btn-open-folder">📂 打开文件夹</button>
-                                <button class="btn" id="btn-detect-comsoft">🔍 一键调用官方软件</button>
-                            </div>
-                            <div id="comsoft-list" style="margin-top:10px;font-size:13px"></div>
-                            <div id="watch-status" style="margin-top:10px;font-size:13px;color:#666">未启动监控</div>
-                            <div id="watch-diag" style="margin-top:8px;font-size:12px;color:#b26a00;line-height:1.7"></div>
-                            <details style="margin-top:12px;font-size:13px;color:#666">
-                                <summary style="cursor:pointer">操作指引（ComSoft Professional 读取 184 全量数据）</summary>
-                                <div style="margin-top:8px;line-height:1.8;padding:10px;background:#f7f9fb;border-radius:8px">
-                                    1. 点「📂 打开文件夹」——这是给 ComSoft 用的交接文件夹（路径已预填到输入框）；<br>
-                                    2. 点「🔍 一键调用官方软件」启动 ComSoft Professional（也可手动打开）；<br>
-                                    3. 插上温度计，在 ComSoft 里<b>读取记录仪数据</b>（184 会自动连接）；<br>
-                                    4. 在 ComSoft 里把测量数据<b>保存为 .vi2 档案</b>（文件→另存为）或<b>导出 CSV</b>，保存位置选上面打开的文件夹；<br>
-                                    5. 本工具检测到新文件后<b>自动导入</b>并显示条数，多台设备依次保存即可；<br>
-                                    6. 全部导完后点「下一步：数据汇总」导出 Excel。
-                                </div>
-                            </details>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- ===== v3.0.0 多温度计批量插拔读取 ===== -->
-            <section class="step-panel" id="panel-batch">
-                <div class="card" style="border:2px solid #e2a93b">
-                    <div class="card-header">
-                        <h2>🧊 多温度计批量读取（逐台插拔）</h2>
-                        <p class="card-desc">
-                            每插一台温度计 → 检测 → 保存 → 拔下换下一台，全部读完一键导出汇总 Excel。
-                            读数优先来自本地 <b>Comfort Software (cc4.exe)</b> 与设备自带 PDF 报告（含每分钟温度）。
-                        </p>
+                        <h2>🔌 方式一 · 读取温度计设备</h2>
+                        <p class="card-desc">插入温度计 → 扫描 → 确认读取，数据进入统一列表。读数优先来自本地 Comfort Software (cc4.exe) 与设备 PDF 报告。</p>
                     </div>
                     <div class="card-body">
                         <div class="batch-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
@@ -235,29 +70,26 @@
                             <div id="batch-current" style="margin-top:12px"></div>
                             <div id="batch-done-actions" style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap">
                                 <button class="btn" id="btn-batch-next" style="display:none">✔ 已保存，准备下一台</button>
-                                <button class="btn btn-primary btn-lg" id="btn-batch-export" style="display:none">📤 全部完成，导出汇总 Excel</button>
-                                <button class="btn" id="btn-batch-clear" style="display:none">↺ 重新开始</button>
+                                <button class="btn btn-ghost" id="btn-batch-clear" style="display:none">↺ 重新开始</button>
                             </div>
                         </div>
-
                         <div id="batch-list" style="margin-top:14px"></div>
                     </div>
                 </div>
             </section>
-            <div style="height:8px"></div>
 
-            <!-- ===== v3.1.0 批量上传 vi2 直接导出 ===== -->
-            <section class="step-panel" id="panel-step5">
-                <div class="card">
+            <!-- ===== 方式二：批量导入 vi2 ===== -->
+            <section class="step-panel" id="panel-vi2">
+                <div class="card" style="border:2px solid #8e44ad">
                     <div class="card-header">
-                        <h2>📁 批量上传 .vi2 文件，一键导出 Excel</h2>
-                        <p class="card-desc">从 Testo Comfort Software 里导出的 .vi2 全量文件，可一次选多个，上传后直接导出到 Excel。无需逐台插拔。</p>
+                        <h2>📁 方式二 · 批量导入 .vi2 文件</h2>
+                        <p class="card-desc">从 Testo Comfort Software 里导出的 .vi2 全量文件，可一次选多个 / 拖拽上传，自动解析全量数据并加入统一列表。</p>
                     </div>
                     <div class="card-body">
                         <div class="vi2-dropzone" id="vi2-dropzone" style="border:2px dashed #aab8c8;border-radius:12px;padding:36px 20px;text-align:center;background:#f7fafc;cursor:pointer;transition:.2s">
                             <div style="font-size:40px">📂</div>
                             <div style="font-size:16px;color:#445;margin-top:8px">点击选择 或 拖拽多个 .vi2 文件到此处</div>
-                            <div style="font-size:13px;color:#889;margin-top:6px">支持一次选择多个文件，自动解析全量数据</div>
+                            <div style="font-size:13px;color:#889;margin-top:6px">支持一次选择多个文件，自动解析全量数据，重复 SN 自动去重</div>
                             <input type="file" id="vi2-file-input" multiple accept=".vi2" style="display:none">
                         </div>
                         <div id="vi2-progress" style="margin-top:14px;display:none">
@@ -266,95 +98,33 @@
                                 <div id="vi2-progress-bar" style="width:0%;height:100%;background:#27ae60;border-radius:6px;transition:width .3s"></div>
                             </div>
                         </div>
-                        <div id="vi2-result" style="margin-top:16px;display:none">
-                            <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
-                                <h3 style="margin:0;font-size:16px">📋 已读取的设备（<span id="vi2-count">0</span> 台）</h3>
-                                <div>
-                                    <button class="btn btn-primary btn-lg" id="btn-vi2-export">📤 导出汇总 Excel</button>
-                                    <button class="btn" id="btn-vi2-clear">↺ 清空重传</button>
-                                </div>
-                            </div>
-                            <div id="vi2-list" style="margin-top:12px"></div>
-                            <div class="muted" style="margin-top:10px;font-size:13px" id="vi2-export-note"></div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-            <div style="height:8px"></div>
-
-            <!-- Step 3: 数据汇总 -->
-            <section class="step-panel" id="panel-step3">
-                <div class="card">
-                    <div class="card-header">
-                        <h2>📋 数据汇总</h2>
-                        <p class="card-desc">所有设备数据已读取完成，请确认信息后导出。</p>
-                    </div>
-                    <div class="card-body">
-                        <div class="summary-grid" id="summary-grid">
-                            <!-- 动态生成 -->
-                        </div>
-                        <div class="summary-stats" id="summary-stats">
-                            <!-- 统计信息 -->
-                        </div>
-                        <!-- 每测点数据明细 -->
-                        <div class="summary-detail" id="summary-detail" style="display:none">
-                            <div class="summary-detail-head">
-                                <h3 id="summary-detail-title">数据明细</h3>
-                                <button class="btn btn-ghost btn-sm" id="btn-close-detail">&times; 收起</button>
-                            </div>
-                            <div class="table-wrap">
-                                <table class="preview-table" id="summary-detail-table">
-                                    <thead><tr></tr></thead>
-                                    <tbody></tbody>
-                                </table>
-                            </div>
-                        </div>
-                        <div class="card-actions" style="margin-top:24px">
-                            <button class="btn btn-primary btn-lg" id="btn-to-export">
-                                下一步：导出 Excel →
-                            </button>
-                        </div>
+                        <div id="vi2-msg" style="margin-top:10px;font-size:13px;color:#666"></div>
                     </div>
                 </div>
             </section>
 
-            <!-- Step 4: 导出 -->
-            <section class="step-panel" id="panel-step4">
-                <div class="card">
+            <!-- ===== 第三步：统一数据池 + 分析导出 ===== -->
+            <section class="step-panel" id="panel-export">
+                <div class="card" style="border:2px solid #27ae60">
                     <div class="card-header">
-                        <h2>📊 导出 Excel</h2>
-                        <p class="card-desc">将汇总数据导出为 Excel 文件。</p>
+                        <h2>📊 分析并导出 Excel</h2>
+                        <p class="card-desc">以下为两种读取方式已收集的全部设备数据。确认无误后，一键导出汇总 Excel（多工作表：汇总页 + 每台设备明细）。</p>
                     </div>
                     <div class="card-body">
-                        <div class="export-info" id="export-info">
+                        <div class="export-info">
                             <div class="export-stat-row">
-                                <div class="export-stat">
-                                    <div class="export-stat-value" id="export-total-points">0</div>
-                                    <div class="export-stat-label">设备数量</div>
-                                </div>
-                                <div class="export-stat">
-                                    <div class="export-stat-value" id="export-total-records">0</div>
-                                    <div class="export-stat-label">数据总条数</div>
-                                </div>
-                                <div class="export-stat">
-                                    <div class="export-stat-value" id="export-sheets">3</div>
-                                    <div class="export-stat-label">工作表数</div>
-                                </div>
+                                <div class="export-stat"><div class="export-stat-value" id="exp-count">0</div><div class="export-stat-label">设备数量</div></div>
+                                <div class="export-stat"><div class="export-stat-value" id="exp-records">0</div><div class="export-stat-label">数据总条数</div></div>
+                                <div class="export-stat"><div class="export-stat-value" id="exp-source">—</div><div class="export-stat-label">数据来源</div></div>
                             </div>
                         </div>
-                        <div class="export-hint" id="export-hint" style="text-align:center;color:#666;margin:12px 0 4px"></div>
-                        <div class="card-actions">
-                            <button class="btn btn-primary btn-lg" id="btn-export">
-                                📥 导出 Excel 文件
-                            </button>
-                            <button class="btn btn-ghost btn-lg" id="btn-new-session">
-                                🔄 新建会话
-                            </button>
+                        <div id="all-list" style="margin-top:14px"></div>
+                        <div class="card-actions" style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap">
+                            <button class="btn btn-primary btn-lg" id="btn-all-export">📥 分析并导出 Excel</button>
+                            <button class="btn" id="btn-all-refresh">🔄 刷新数据</button>
+                            <button class="btn" id="btn-all-clear">🗑 清空全部数据</button>
                         </div>
-                        <div class="export-success" id="export-success" style="display:none">
-                            <div class="success-icon">✅</div>
-                            <p>文件已下载！</p>
-                        </div>
+                        <div id="all-export-note" style="margin-top:14px;font-size:14px"></div>
                     </div>
                 </div>
             </section>
