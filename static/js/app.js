@@ -800,6 +800,10 @@ document.addEventListener('DOMContentLoaded', () => {
     $('btn-all-refresh').addEventListener('click', refreshAll);
     $('btn-all-clear').addEventListener('click', allClear);
 
+    // === 各方式「进入下一环节：分析导出」 ===
+    if ($('btn-read-next')) $('btn-read-next').addEventListener('click', () => switchTo('export'));
+    if ($('btn-vi2-next')) $('btn-vi2-next').addEventListener('click', () => switchTo('export'));
+
     // 初始化：显示方式一，刷新统一列表
     switchTo('read');
     refreshAll();
@@ -831,7 +835,6 @@ async function batchStart() {
     document.getElementById('batch-wizard').style.display = 'block';
     document.getElementById('btn-batch-detect').style.display = '';
     document.getElementById('btn-batch-start').disabled = true;
-    document.getElementById('btn-batch-export').style.display = 'none';
     document.getElementById('btn-batch-next').style.display = 'none';
     document.getElementById('btn-batch-clear').style.display = '';
     document.getElementById('batch-current').innerHTML = '';
@@ -870,7 +873,7 @@ async function batchSave() {
         box.innerHTML = '<div style="color:#1e7e34">✅ 本台已保存：<b>' + esc(r.sn || sn) + '</b>（' + r.record_count + ' 条）。<br>请<b>拔下这台，插入下一台</b>，或点「✔ 准备下一台」继续。</div>';
     }
     document.getElementById('btn-batch-next').style.display = '';
-    if (r.device_count) document.getElementById('btn-batch-export').style.display = '';
+    if (r.device_count) refreshAll();
     await refreshBatchList();
 }
 async function batchNext() {
@@ -879,8 +882,8 @@ async function batchNext() {
     const r = await fetch('/api/batch/status').then(x => x.json());
     const n = (r.devices || []).length;
     setBatchList(r.devices || []);
-    setBatchStepHint('② 已保存 <b>' + n + '</b> 台。请<b>插入第 ' + (n + 1) + ' 台温度计</b>，然后点「🔍 检测当前设备」');
-    if (n >= 1) document.getElementById('btn-batch-export').style.display = '';
+    setBatchStepHint('② 已保存 <b>' + n + '</b> 台。请<b>插入第 ' + (n + 1) + '</b> 台温度计</b>，然后点「🔍 检测当前设备」');
+    if (n >= 1) refreshAll();
 }
 async function refreshBatchList() {
     const r = await fetch('/api/batch/status').then(x => x.json());
@@ -951,6 +954,7 @@ async function refreshAll() {
     try {
         const res = await api('/api/all/list', { method: 'GET' });
         const devices = res.devices || [];
+        updateNextBars(devices);
         const box = document.getElementById('all-list');
         const count = document.getElementById('exp-count');
         const rec = document.getElementById('exp-records');
@@ -973,6 +977,25 @@ async function refreshAll() {
     } catch (e) {
         const box = document.getElementById('all-list');
         if (box) box.innerHTML = '<span style="color:#c0392b">刷新失败: ' + esc(e.message) + '</span>';
+    }
+}
+
+/* ===== v3.2.0 更新「已形成测点数据」提示条 ===== */
+function updateNextBars(devices) {
+    const total = (devices || []).length;
+    // 方式一：读取设备
+    const rb = document.getElementById('read-next-bar');
+    if (rb) {
+        const n = document.getElementById('read-point-count');
+        if (n) n.textContent = total;
+        rb.style.display = total > 0 ? '' : 'none';
+    }
+    // 方式二：导入 vi2
+    const vb = document.getElementById('vi2-next-bar');
+    if (vb) {
+        const n = document.getElementById('vi2-point-count');
+        if (n) n.textContent = total;
+        vb.style.display = total > 0 ? '' : 'none';
     }
 }
 

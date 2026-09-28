@@ -119,6 +119,12 @@ body {
 .card-body { padding: 0 28px 28px; }
 .card-actions { margin-top: 24px; display: flex; gap: 12px; justify-content: center; }
 
+/* ─── v3.2.0 下一环节引导条 next-bar ─────────────────────────────────────── */
+.next-bar { border-top: 1px dashed #d0d7e2; padding-top: 16px; }
+.next-bar-inner { display: flex; align-items: center; gap: 16px; justify-content: space-between; flex-wrap: wrap;
+    background: #eefaf0; border: 1px solid #b8e6c4; border-radius: 10px; padding: 12px 18px; }
+.next-ok { font-size: 0.95rem; color: #1e7e34; }
+
 /* ─── Form ───────────────────────────────────────────────────────────────── */
 .form-row { margin-bottom: 20px; }
 .form-row label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; }
