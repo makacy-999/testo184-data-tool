@@ -34,7 +34,7 @@ async function api(url, options = {}) {
         ...options,
         body: options.body ? JSON.stringify(options.body) : undefined,
     });
-    if (url.endsWith('/export')) return res; // 文件下载不解析 JSON
+    if (/\/sessions\/[^/]+\/export$/.test(url)) return res; // 旧版 session 文件流下载，不解析 JSON
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `请求失败 (${res.status})`);
     return data;
