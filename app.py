@@ -438,7 +438,11 @@ class DeviceDetector:
                                                     "temperature": r["temperature"],
                                                     "source_file": os.path.basename(f),
                                                     "record_index": idx})
-                                rinfo = {"serial": parsed.get("serial_number", "")}
+                                rinfo = {"serial": parsed.get("serial_number", ""),
+                                     "unit": parsed.get("unit", "°C"),
+                                     "limit_min": parsed.get("limit_min"),
+                                     "limit_max": parsed.get("limit_max"),
+                                     "start_time": parsed.get("start_time", "")}
                             if not records:
                                 continue
                             sn = str((rinfo or {}).get("serial") or "")
@@ -458,6 +462,10 @@ class DeviceDetector:
                                 "xml_files": [],
                                 "records": records,
                                 "serial_number": sn,
+                                "unit": (rinfo or {}).get("unit", "°C"),
+                                "limit_min": (rinfo or {}).get("limit_min"),
+                                "limit_max": (rinfo or {}).get("limit_max"),
+                                "start_time": (rinfo or {}).get("start_time", ""),
                                 "scan_log": [{"file": os.path.basename(f), "kind": "ComSoft存档",
                                               "status": "ok", "records": len(records),
                                               "detail": "接力文件夹全量存档 %d 条" % len(records)}],
@@ -2352,6 +2360,10 @@ def batch_save():
         "sn": ds,
         "records": dev.get("records") or [],
         "source": _batch_source(dev),
+        "unit": dev.get("unit", "°C"),
+        "limit_min": dev.get("limit_min"),
+        "limit_max": dev.get("limit_max"),
+        "start_time": dev.get("start_time", ""),
     })
     return jsonify({
         "ok": True, "duplicate": False,
