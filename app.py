@@ -2383,41 +2383,112 @@ def batch_download(filename):
 
 
 def _export_batch_excel(devices):
+    """导出：每个测点一个独立 xlsx(测点N) + 一个按时间对齐的汇总-演示-日期 xlsx，打包成 zip"""
     import openpyxl
     from openpyxl.styles import Font, PatternFill
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = "汇总"
-    hdr = ["设备序号", "序列号(SN)", "数据来源", "记录条数", "开始时间", "结束时间",
-           "最低温(°C)", "最高温(°C)", "平均温(°C)"]
-    ws.append(hdr)
-    hdr_fill = PatternFill("solid", fgColor="4472C4")
-    for c in range(1, len(hdr) + 1):
-        cell = ws.cell(1, c)
-        cell.font = Font(bold=True, color="FFFFFF")
-        cell.fill = hdr_fill
-    for i, d in enumerate(devices, 1):
-        recs = d["records"]
-        temps = [_batch_temp_val(r.get("temperature")) for r in recs]
-        temps = [t for t in temps if t is not None]
-        ws.append([
-            i, d["sn"], d["source"], len(recs),
-            _batch_rec_time(recs[0]) if recs else "",
-            _batch_rec_time(recs[-1]) if recs else "",
-            round(min(temps), 2) if temps else "",
-            round(max(temps), 2) if temps else "",
-            round(sum(temps) / len(temps), 2) if temps else "",
-        ])
-        sheet = wb.create_sheet("SN_" + str(d["sn"])[-8:])
-        sheet.append(["序号", "时间", "温度(°C)"])
-        for c in range(1, 4):
-            sheet.cell(1, c).font = Font(bold=True)
-        for j, r in enumerate(recs, 1):
-            sheet.append([j, _batch_rec_time(r), r.get("temperature")])
+    import zipfile
+
+    def _tval(r):
+        return _batch_temp_val(r.get("temperature"))
+
+    # 仅取有记录且能读到温度的设备（按唯一 SN 去重，与统一池一致）
+    seen_sn = set()
+    valid = []
+    for d in devices:
+        sn = str(d.get("sn") or "").strip()
+        if not sn or sn in seen_sn:
+            continue
+        n = sum(1 for r in d.get("records") or [] if _tval(r) is not None)
+        if n > 0:
+            seen_sn.add(sn)
+            valid.append(d)
+    if not valid:
+        raise ValueError("没有可用数据")
+
+    stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    today = datetime.now().strftime("%Y-%m-%d")
     os.makedirs(EXPORT_DIR, exist_ok=True)
-    out = os.path.join(EXPORT_DIR, "Testo184_Batch_%s.xlsx" % datetime.now().strftime("%Y%m%d_%H%M%S"))
-    wb.save(out)
-    return out
+    tmpdir = os.path.join(EXPORT_DIR, "tmp_%s" % stamp)
+    os.makedirs(tmpdir, exist_ok=True)
+
+    created = []  # (文件名, 路径)
+
+    # ── 每个测点一个独立 xlsx：测点N.xlsx（时间+温度） ──
+    for idx, d in enumerate(valid, 1):
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "测点%d" % idx
+        ws["A1"] = "时间"
+        ws["B1"] = "温度(°C)"
+        for c in ("A1", "B1"):
+            ws[c].font = Font(bold=True, color="FFFFFF")
+            ws[c].fill = PatternFill("solid", fgColor="4472C4")
+        for r in d.get("records") or []:
+            t = _tval(r)
+            if t is None:
+                continue
+            ws.append([_batch_rec_time(r), t])
+        ws.column_dimensions["A"].width = 34
+        ws.column_dimensions["B"].width = 12
+        fname = "测点%d_%s.xlsx" % (idx, today)
+        p = os.path.join(tmpdir, fname)
+        wb.save(p)
+        created.append((fname, p))
+
+    # ── 汇总-演示-日期.xlsx：按时间对齐，缺数据留空 ──
+    wb = openpyxl.Workbook()
+    summary = wb.active
+    summary.title = "汇总数据"
+    summary.append(["温度计号"] + [str(d.get("sn") or "") for d in valid])
+    summary.append(["日期"] + ["测点%d" % i for i in range(1, len(valid) + 1)])
+    for col in range(1, len(valid) + 2):
+        c1 = summary.cell(1, col)
+        c2 = summary.cell(2, col)
+        c1.font = Font(bold=True, color="FFFFFF")
+        c2.font = Font(bold=True, color="FFFFFF")
+        c1.fill = PatternFill("solid", fgColor="4472C4")
+        c2.fill = PatternFill("solid", fgColor="4472C4")
+    maps = []
+    all_times = set()
+    for d in valid:
+        m = {}
+        for r in d.get("records") or []:
+            t = _tval(r)
+            if t is None:
+                continue
+            key = _batch_rec_time(r)
+            m[key] = t
+            all_times.add(key)
+        maps.append(m)
+    for t in sorted(all_times):
+        row = [t]
+        for m in maps:
+            row.append(m.get(t, ""))
+        summary.append(row)
+    summary.column_dimensions["A"].width = 34
+    for col in range(2, len(valid) + 2):
+        summary.column_dimensions[openpyxl.utils.get_column_letter(col)].width = 12
+    sum_fname = "汇总-演示-%s.xlsx" % today
+    sum_path = os.path.join(tmpdir, sum_fname)
+    wb.save(sum_path)
+    created.append((sum_fname, sum_path))
+
+    # ── 打包 zip ──
+    zip_path = os.path.join(EXPORT_DIR, "Testo184_汇总_%s.zip" % stamp)
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, p in created:
+            zf.write(p, fname)
+    # 清理临时文件
+    for _, p in created:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+    try:
+        os.rmdir(tmpdir)
+    except OSError:
+        pass
+    return zip_path
 
 
 # ─── v3.1.0 批量上传 .vi2 → 一键导出 Excel（独立于 session，直接全量解析） ───

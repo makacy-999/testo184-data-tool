@@ -1046,9 +1046,9 @@ async function allExport() {
     try {
         const res = await api('/api/all/export', { method: 'POST', body: {} });
         if (!res.ok) { box.innerHTML = '<span style="color:#c0392b">导出失败：' + esc(res.error || '') + '</span>'; return; }
-        box.innerHTML = '✅ 已生成 <b>' + res.count + '</b> 台设备、共 <b>' + res.records + '</b> 条数据的汇总 Excel：<br><br>' +
-            '<a class="btn btn-primary btn-lg" href="' + res.url + '" download="' + esc(res.filename || 'Testo184_Batch.xlsx') + '" style="display:inline-block">📥 下载 Excel</a>' +
-            '<div style="font-size:12px;color:#666;margin-top:6px">文件名：' + esc(res.filename || 'Testo184_Batch.xlsx') + '</div>';
+        box.innerHTML = '✅ 已生成 <b>' + res.count + '</b> 台设备、共 <b>' + res.records + '</b> 条数据的汇总包：<br><br>' +
+            '<a class="btn btn-primary btn-lg" href="' + res.url + '" download="' + esc(res.filename || 'Testo184_汇总.zip') + '" style="display:inline-block">📥 下载汇总包 (ZIP)</a>' +
+            '<div style="font-size:12px;color:#666;margin-top:6px">内含：每个测点一个「测点N-日期.xlsx」+ 一个「汇总-演示-日期.xlsx」。<br>文件名：' + esc(res.filename || 'Testo184_汇总.zip') + '</div>';
     } catch (e) {
         box.innerHTML = '<span style="color:#c0392b">导出失败: ' + esc(e.message) + '</span>';
     }
