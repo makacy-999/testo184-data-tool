@@ -115,7 +115,7 @@ footer .lic{opacity:.8}
       <div>
         <span class="tag">v3.2.8 · 免安装 · 数据仅存本机</span>
         <h1 id="main-title">把 Testo 184 温度计的数据，<br>变成一张汇总 Excel</h1>
-        <p class="lead">逐台插入温度计自动读取——<b>设备盘的图形报告直接还原成数据表</b>（曲线坐标反推温度），序列号自动识别；也可导入 <b>.vi2 / .xml / .xdp / PDF 报告</b>，或开启<b>软件联动</b>监控导出文件夹自动抓取，一键导出包含<b>每测点温度记录</b>的汇总工作簿。扫描时每个文件的处理结果（格式、条数、原因）都直接显示在页面上，读不出数据时一眼看到卡在哪。<b>分析导出增强</b>：每个测点独立一个「测点N」表格，再加一个按时间对齐的「汇总-演示-日期」汇总表，打包 zip 一键下载。支持 Windows 系统。</p>
+        <p class="lead">逐台插入温度计自动读取——<b>用 Testo ComSoft 软件接力导出，工具自动读入</b>：开始批量读取时自动在桌面建「温度计原始数据-日期」文件夹，设备序列号自动识别；也可直接批量导入 <b>.vi2</b> 文件。一键「分析并导出」：每个测点独立一个「测点N」表格（<b>表头带设备名称、起止时间、统计值、极限值、SN</b>），再加一个按时间对齐的「汇总-演示-日期」汇总表，打包 zip 下载。所有操作与测量数据仅在本机完成，不上传。支持 Windows 系统。</p>
         <div class="dl-row">
           <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v3.2.8/Testo184Tool-Windows-v3.2.8.zip" target="_blank" rel="noopener noreferrer">下载 Windows 版 <span class="num">33.0 MB · ZIP</span></a>
           <a class="btn btn-ghost" href="https://github.com/makacy-999/testo184-data-tool/releases/tag/v3.2.8" target="_blank" rel="noopener noreferrer">版本发布页</a>
@@ -156,14 +156,14 @@ footer .lic{opacity:.8}
     <div class="wrap">
       <div class="sec-head">
         <span class="kicker">工作流程</span>
-        <h2 id="wf-title">四步完成一次批量读取</h2>
-        <p>一台一台插，一台一台读。每读完一台系统会提示更换下一台，全部读完自动汇总。</p>
+        <h2 id="wf-title">四步完成一次批量读取汇总</h2>
+        <p>配好测点，点「开始批量读取」在桌面生成接力文件夹，一台一台插、一台一台读完换下一台，全部读完导出即可。</p>
       </div>
       <div class="steps">
         <div class="step"><h3>配置测点</h3><p>输入本次要监测的测点数量，生成测点清单，测点编号可自行修改。</p><span class="hint">例如：1 号冷库、2 号冷库</span></div>
-        <div class="step"><h3>读取设备 / 软件联动</h3><p>USB 插入温度计自动识别解析（图形报告曲线还原 + <code>.xdp</code> 数据包直读）；上传 <code>.vi2 / .xml / .xdp / PDF</code> 一键导入（支持多选）；或开启联动模式，监控 Testo 软件导出文件夹，新数据文件<b>自动导入</b>。</p><span class="hint">曲线图也能逆向还原成数据表</span></div>
+        <div class="step"><h3>批量读取 / 软件联动</h3><p>点「开始批量读取」，工具<b>自动在桌面创建「温度计原始数据-日期」文件夹</b>。插入第 1 台温度计，点「检测当前设备」，用 Testo <b>ComSoft 软件</b>读取并保存 <code>.vi2</code> 到该文件夹，工具自动识别读入、提示更换下一台。也可直接上传 <code>.vi2</code> 一键批量导入。</p><span class="hint">接力文件夹按当天日期自动建好</span></div>
         <div class="step"><h3>核对汇总</h3><p>所有设备读取完毕，核对测点—SN 对照表与数据条数，发现误读可单独重读。</p><span class="hint">数据同时存入本机数据库，可回看历史</span></div>
-        <div class="step"><h3>导出 Excel</h3><p>一键生成汇总工作簿：全部数据 + 每台设备独立工作表 + 统计摘要。</p><span class="hint">文件名自动带时间戳</span></div>
+        <div class="step"><h3>分析并导出</h3><p>一键打包 zip：每个测点独立一个「测点N.xlsx」（<b>表头带设备名称、起止时间、最小/最大/均值、极限值、测量值、SN</b>）+ 一个按时间对齐的「汇总-演示-日期.xlsx」汇总表。</p><span class="hint">瞬时曲线自动还原成可核对的数据行</span></div>
       </div>
     </div>
   </section>
@@ -172,33 +172,32 @@ footer .lic{opacity:.8}
     <div class="wrap">
       <div class="sec-head">
         <span class="kicker">导出成果</span>
-        <h2 id="ex-title">一个 Excel，看全所有测点</h2>
-        <p>工作簿内置 3 张公共表，外加每台设备一张独立明细表（Sheet 名即测点号），明细按时间排序、自带筛选。</p>
+        <h2 id="ex-title">一个 zip，拿全每台测点的明细</h2>
+        <p>导出打包成 zip：每个测点一张独立「测点N.xlsx」，表头带设备概况（名称、起止时间、统计、极限值、SN）；另有「汇总-演示-日期」汇总表，各测点数据按时间对齐，几台设备就生成几张独立表。</p>
       </div>
       <div class="excel">
-        <div class="tabs" role="tablist" aria-label="工作簿结构示意">
-          <span class="tab on">汇总数据</span><span class="tab">设备概览</span><span class="tab">统计摘要</span>
-          <span class="tab" id="tab-p1">测点1</span><span class="tab">测点2</span><span class="tab">测点3 …</span>
+        <div class="tabs" role="tablist" aria-label="导出结构示意">
+          <span class="tab on">汇总-演示-日期</span><span class="tab">测点1</span><span class="tab">测点2</span><span class="tab">测点3 …</span>
         </div>
         <div class="body" aria-live="polite">
-          <h3 id="sheet-desc">「汇总数据」— 全部测点合并大表</h3>
-          <p id="sheet-p">列：测点号、设备 SN、序号、日期、时间、温度、湿度、报警。跨测点筛选、透视都在这一张表完成。</p>
+          <h3 id="sheet-desc">「汇总-演示-日期」— 各测点按时间对齐</h3>
+          <p id="sheet-p">列：温度计号 / 日期，以及「测点1、测点2…」各列；同一时间点各测点的温度排成一行，缺数据留空，方便横向对比各冷库同刻温度。</p>
           <div class="tablewrap">
             <table>
-              <caption>「测点1」工作表示例（示意数据）</caption>
-              <thead><tr><th scope="col">序号</th><th scope="col">日期</th><th scope="col">时间</th><th scope="col">温度 (°C)</th><th scope="col">湿度 (%)</th><th scope="col">报警</th></tr></thead>
+              <caption>「测点1」工作表示例：表头先带设备概况，下方为逐条记录（示意数据）</caption>
+              <thead><tr><th scope="col">设备名称: 44021622</th><th scope="col">最小值</th><th scope="col">最大值</th><th scope="col">均值</th><th scope="col">极限值</th></tr></thead>
               <tbody>
-                <tr><td class="n">1</td><td class="num">2026-09-20</td><td class="num">14:00</td><td class="n">3.8</td><td class="n">56.2</td><td>—</td></tr>
-                <tr><td class="n">2</td><td class="num">2026-09-20</td><td class="num">14:01</td><td class="n">4.1</td><td class="n">55.8</td><td>—</td></tr>
-                <tr class="alarm"><td class="n">103</td><td class="num">2026-09-20</td><td class="num">15:42</td><td class="n">8.3</td><td class="n">52.0</td><td class="warn">超上限</td></tr>
-                <tr><td class="n">104</td><td class="num">2026-09-20</td><td class="num">15:43</td><td class="n">7.6</td><td class="n">53.1</td><td>—</td></tr>
-                <tr><td class="n">…</td><td class="num">…</td><td class="num">…</td><td class="n">…</td><td class="n">…</td><td>…</td></tr>
+                <tr><td>起始时间 / 结束时间</td><td colspan="4">no name [°C] · 3.72 / 31.47 / 7.99 / 2.0/8.0</td></tr>
+                <tr><th scope="col">id</th><th scope="col">日期/时间</th><th scope="col">no name[°C]</th><th></th><th></th></tr>
+                <tr><td class="n">1</td><td class="num">2026-08-28 16:56:47</td><td class="n">27.06</td><td></td><td></td></tr>
+                <tr><td class="n">2</td><td class="num">2026-08-28 17:04:47</td><td class="n">27.29</td><td></td><td></td></tr>
+                <tr><td class="n">…</td><td class="num">…</td><td class="n">…</td><td></td><td></td></tr>
               </tbody>
             </table>
           </div>
         </div>
       </div>
-      <p class="meta-note" style="margin-top:12px">「设备概览」与「统计摘要」中每台设备一行：数据条数、起止时间、最高 / 最低 / 平均温度，超限记录在汇总表中以底色标出。</p>
+      <p class="meta-note" style="margin-top:12px">「测点N.xlsx」表头自动带上设备名称、起止时间、最小值 / 最大值 / 均值、极限值（从 vi2 自动读取）、测量通道、测量值条数与 SN；「汇总-演示-日期.xlsx」把各测点温度按 SN 分列排布、时间对齐。</p>
     </div>
   </section>
 
@@ -229,7 +228,7 @@ footer .lic{opacity:.8}
       <div class="sec-head"><span class="kicker">常见问题</span><h2 id="faq-title">使用前值得知道的几件事</h2></div>
       <details><summary>数据存哪里？会上传吗？</summary><div class="ans">全部保存在你电脑上的本地数据库（程序目录的 <code>data</code> 子目录），不经过任何服务器。导出的 Excel 也只生成在本机，由你自己分发。</div></details>
       <details><summary>支持哪些型号？可以同时插多台吗？</summary><div class="ans">当前版本针对 <strong>Testo 184</strong> 系列设计。读取方式为逐台插入：插一台读一台，读完提示更换下一台——这样测点与设备 SN 的对应关系最可靠，也避免 USB Hub 供电不足导致读数失败。</div></details>
-      <details><summary>温度计读不到数据？用软件联动自动转 Excel。</summary><div class="ans">部分 Testo 184 固件的完整数据需官方软件读取。推荐「软件联动」：① 建一个空文件夹（如桌面「testo导出」），把路径填到工具的联动模式里点「开始监控」；② 点「一键调用 Testo 软件」自动打开电脑上的 ComSoft/Testo 软件（或手动打开），插上温度计，在软件里读取并保存 <code>.vi2 / .xml / .xdp</code> 到该文件夹（保存了其他格式文件时页面会提示文件名和原因）；③ 本工具检测到新文件即自动解析导入（自动识别 SN、采样间隔、起止时间），多台依次保存即可，最后导出 Excel。把温度计 U 盘里的 <code>testo 184 measurement report</code>（图形报告）或 <code>configuration_数据.xdp</code> 拖到「直接导入数据文件」处即可读取——图形报告会自动从曲线还原数据；也支持一次多选多个文件手动导入。扫描设备时页面会显示每个文件的处理明细（格式、解析条数、原因），数据读不出时可直接定位问题文件。</div></details>
+      <details><summary>温度计读不到数据？用软件联动自动转 Excel。</summary><div class="ans">部分 Testo 184 固件的完整数据需官方软件读取。工具已内置「接力读取」：点「开始批量读取」后，<b>自动在桌面创建「温度计原始数据-日期」文件夹</b>（如温度计原始数据-2026-09-29）；插入温度计点「检测当前设备」，「一键调用 Testo 软件」打开电脑上的 ComSoft/Testo 软件，在软件里读取并保存 <code>.vi2</code> 到该文件夹；工具检测到新文件即自动识别读入（自动识别 SN、极限值、采样间隔、起止时间），提示更换下一台，几台依次读完即可，最后「分析并导出」Excel。也可直接把温度计 U 盘或本机的 <code>.vi2 / .vi2</code> 文件批量上传导入；导出时每个测点独立一张「测点N」表，表头自动带设备概况与极限值。</div></details>
 <details><summary>识别不到温度计怎么办？</summary><div class="ans">点击「扫描 USB 设备」前先确认设备指示灯亮起；如仍无法识别，换个 USB 口或转接头再扫。接入后系统会把设备识别为一个移动磁盘。</div></details>
       <details><summary>读错了能重读吗？历史能找回吗？</summary><div class="ans">可以。读取确认前可放弃重插；确认后发现错误，可在会话中删除该测点重读。所有历史会话保存在本机数据库，打开应用即可切换查看。</div></details>
       <details><summary>是开源的吗？</summary><div class="ans">是，采用 MIT 协议开源，源码与更新发布在 <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>。</div></details>
@@ -248,12 +247,10 @@ footer .lic{opacity:.8}
 (function(){try{
   document.querySelectorAll('a[href^="#"]').forEach(function(a){a.addEventListener('click',function(e){var id=this.getAttribute('href').slice(1),t=document.getElementById(id);if(t){e.preventDefault();t.scrollIntoView({behavior:'smooth',block:'start'});}});});
   var desc={
-    '汇总数据':['「汇总数据」— 全部测点合并大表','列：测点号、设备 SN、序号、日期、时间、温度、湿度、报警。跨测点筛选、透视都在这一张表完成。'],
-    '设备概览':['「设备概览」— 每台设备一行','测点号、SN、数据条数、最早与最晚记录时间，一眼核对读取是否完整。'],
-    '统计摘要':['「统计摘要」— 每台设备一行统计','最高 / 最低 / 平均温度与数据点数，快速判断运输或储存是否超标。'],
-    '测点1':['「测点1」— 该设备的完整逐分钟记录','只包含这一台设备的数据：序号、日期、时间、温度、湿度、报警状态，按时间先后排列，表头可筛选。每台设备一张表，互不混排。'],
-    '测点2':['「测点2」— 与测点1结构完全一致','同一工作簿内每台设备各占一张表，Sheet 名即测点号，转发给任何人都能看懂。'],
-    '测点3 …':['测点数量不限','有几台设备就生成几张明细表，表名按测点号自动命名。']
+    '汇总-演示-日期':['「汇总-演示-日期」— 各测点按时间对齐','列：温度计号 / 日期，以及「测点1、测点2…」各列；同一时间点各测点温度排成一行，缺数据留空，方便横向对比。'],
+    '测点1':['「测点1.xlsx」— 该设备的记录表','表头带设备名称、起止时间、最小/最大/均值、极限值、测量通道、测量值、SN；下方是逐条 id + 日期/时间 + 温度记录。'],
+    '测点2':['「测点2.xlsx」— 与测点1 结构完全一致','每台设备一张独立表，发现数据这段时间与批号对应一目了然。'],
+    '测点3 …':['测点数量不限','有几个 .vi2 文件就生成几张独立表，表名按「测点N」自动命名。']
   };
   var tabs=document.querySelectorAll('.excel .tab'),h=document.getElementById('sheet-desc'),p=document.getElementById('sheet-p');
   tabs.forEach(function(t){t.style.cursor='pointer';t.addEventListener('click',function(){var d=desc[t.textContent.trim()];if(!d||!h||!p)return;tabs.forEach(function(x){x.classList.remove('on');});t.classList.add('on');h.textContent=d[0];p.textContent=d[1];});});
