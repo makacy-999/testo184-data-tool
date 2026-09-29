@@ -156,11 +156,10 @@ footer .lic{opacity:.8}
     <div class="wrap">
       <div class="sec-head">
         <span class="kicker">工作流程</span>
-        <h2 id="wf-title">四步完成一次批量读取汇总</h2>
-        <p>配好测点，点「开始批量读取」在桌面生成接力文件夹，一台一台插、一台一台读完换下一台，全部读完导出即可。</p>
+        <h2 id="wf-title">三步完成一次批量读取汇总</h2>
+        <p>点「开始批量读取」在桌面生成接力文件夹，一台一台插、一台一台读完换下一台，全部读完导出即可。</p>
       </div>
       <div class="steps">
-        <div class="step"><h3>配置测点</h3><p>输入本次要监测的测点数量，生成测点清单，测点编号可自行修改。</p><span class="hint">例如：1 号冷库、2 号冷库</span></div>
         <div class="step"><h3>批量读取 / 软件联动</h3><p>点「开始批量读取」，工具<b>自动在桌面创建「温度计原始数据-日期」文件夹</b>。插入第 1 台温度计，点「检测当前设备」，用 Testo <b>ComSoft 软件</b>读取并保存 <code>.vi2</code> 到该文件夹，工具自动识别读入、提示更换下一台。也可直接上传 <code>.vi2</code> 一键批量导入。</p><span class="hint">接力文件夹按当天日期自动建好</span></div>
         <div class="step"><h3>核对汇总</h3><p>所有设备读取完毕，核对测点—SN 对照表与数据条数，发现误读可单独重读。</p><span class="hint">数据同时存入本机数据库，可回看历史</span></div>
         <div class="step"><h3>分析并导出</h3><p>一键打包 zip：每个测点独立一个「测点N.xlsx」（<b>表头带设备名称、起止时间、最小/最大/均值、极限值、测量值、SN</b>）+ 一个按时间对齐的「汇总-演示-日期.xlsx」汇总表。</p><span class="hint">瞬时曲线自动还原成可核对的数据行</span></div>
