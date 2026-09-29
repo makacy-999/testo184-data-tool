@@ -826,7 +826,7 @@ document.addEventListener('DOMContentLoaded', () => {
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function escJs(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
 
-async async function detectCc4() {
+async function detectCc4() {
     const info = document.getElementById('batch-cc4-info');
     try {
         const r = await fetch('/api/comsoft/detect').then(x => x.json());
@@ -845,7 +845,7 @@ async async function detectCc4() {
                 const path = s.exe || (s.location || '');
                 const tag = path === saved ? '（当前）' : '';
                 return '<div style="margin:3px 0"><a href="javascript:void(0)" onclick="saveCc4Path(\'' + escJs(path) + '\')" style="text-decoration:underline">✔ 选用</a> ' +
-                    esc(s.name || os.basename(path)) + tag + '<br><span style="color:#888;font-size:12px">' + esc(path) + '</span></div>';
+                    esc(s.name || (path.split(/[\\/]/).pop() || '软件')) + tag + '<br><span style="color:#888;font-size:12px">' + esc(path) + '</span></div>';
             }).join('');
             info.innerHTML += '✅ 检测到 ' + sw.length + ' 个候选：<br>' + rows;
         }
