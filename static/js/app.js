@@ -776,6 +776,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // === 方式一：读取温度计设备 ===
     $('btn-batch-detect-cc4').addEventListener('click', detectCc4);
     $('btn-batch-launch-cc4').addEventListener('click', launchCc4);
+    $('btn-batch-choose-cc4').addEventListener('click', () => document.getElementById('cc4-file-input').click());
+    document.getElementById('cc4-file-input').addEventListener('change', async (ev) => {
+        const f = ev.target.files && ev.target.files[0];
+        ev.target.value = '';
+        if (!f) return;
+        const info = document.getElementById('batch-cc4-info');
+        try {
+            const r = await fetch('/api/comsoft/set-path', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ exe: f.path || f.name }) }).then(x => x.json());
+            if (r.ok) info.innerHTML = '✅ 已记住 cc4 路径：' + esc(r.saved) + '<br>下次点「▶ 启动 cc4.exe」会直接用这个路径。';
+            else info.textContent = r.error || '保存失败';
+        } catch (e) { info.textContent = '保存失败：' + e.message; }
+    });
     $('btn-batch-start').addEventListener('click', batchStart);
     $('btn-batch-detect').addEventListener('click', batchDetect);
     $('btn-batch-save').addEventListener('click', batchSave);
@@ -812,15 +824,40 @@ document.addEventListener('DOMContentLoaded', () => {
 
 /* ===== v3.0.0 多温度计批量插拔读取 ===== */
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function escJs(s) { return String(s == null ? '' : s).replace(/\\/g, '\\\\').replace(/'/g, "\\'"); }
 
-async function detectCc4() {
+async async function detectCc4() {
     const info = document.getElementById('batch-cc4-info');
     try {
         const r = await fetch('/api/comsoft/detect').then(x => x.json());
+        const saved = r.saved || '';
         const sw = (r.softwares || []).filter(s => s.exe || s.location);
-        if (!sw.length) info.innerHTML = '⚠️ 未检测到 cc4.exe / Comfort Software。<br>可手动在电脑上打开软件，或本工具仍可解析设备 PDF 报告读取数据。';
-        else info.innerHTML = '✅ 检测到：' + sw.map(s => esc(s.name || '软件')).join('、');
+        if (saved) {
+            info.innerHTML = '💾 已记住 cc4 路径：<b>' + esc(saved) + '</b>' +
+                (sw.length ? '<br>检测到其他候选如下，可点选切换：' : '');
+        } else {
+            info.innerHTML = '';
+        }
+        if (!sw.length) {
+            if (!saved) info.innerHTML += '⚠️ 未检测到 cc4.exe / Comfort Software。<br>可点击「📁 选择 cc4.exe」手动指定文件，或直接在电脑上打开软件读取设备。';
+        } else {
+            const rows = sw.map(s => {
+                const path = s.exe || (s.location || '');
+                const tag = path === saved ? '（当前）' : '';
+                return '<div style="margin:3px 0"><a href="javascript:void(0)" onclick="saveCc4Path(\'' + escJs(path) + '\')" style="text-decoration:underline">✔ 选用</a> ' +
+                    esc(s.name || os.basename(path)) + tag + '<br><span style="color:#888;font-size:12px">' + esc(path) + '</span></div>';
+            }).join('');
+            info.innerHTML += '✅ 检测到 ' + sw.length + ' 个候选：<br>' + rows;
+        }
     } catch (e) { info.textContent = '检测失败：' + e.message; }
+}
+async function saveCc4Path(p) {
+    const info = document.getElementById('batch-cc4-info');
+    try {
+        const r = await fetch('/api/comsoft/set-path', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ exe: p }) }).then(x => x.json());
+        if (r.ok) { info.innerHTML = '✅ 已选用 cc4：<b>' + esc(r.saved) + '</b>'; }
+        else info.textContent = r.error || '保存失败';
+    } catch (e) { info.textContent = '保存失败：' + e.message; }
 }
 async function launchCc4() {
     const info = document.getElementById('batch-cc4-info');

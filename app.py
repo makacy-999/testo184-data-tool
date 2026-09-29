@@ -1929,10 +1929,106 @@ def _find_testo_software():
 
 
 def _find_testo_exes():
-    """在常见安装目录中搜索 Testo/ComSoft 的可执行文件（供一键启动）"""
+    """在常见安装目录+注册表AppPaths+开始菜单快捷方式中搜索 Testo/ComSoft 可执行文件（供一键启动）"""
     exes = []
+    seen = set()
     if sys.platform != "win32":
         return exes
+
+    def _add(p):
+        try:
+            p = os.path.normpath(p)
+            pl = p.lower()
+            if os.path.isfile(p) and pl.endswith(".exe") and pl not in seen:
+                seen.add(pl)
+                exes.append(p)
+        except Exception:
+            pass
+
+    # 1) 注册表 App Paths（最可靠：安装即登记）
+    try:
+        import winreg
+        for root in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+            for wow in (winreg.KEY_WOW64_32KEY, winreg.KEY_WOW64_64KEY, 0):
+                try:
+                    k = winreg.OpenKey(root, r"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths",
+                                       0, winreg.KEY_READ | wow)
+                except OSError:
+                    continue
+                i = 0
+                while True:
+                    try:
+                        sub = winreg.EnumKey(k, i)
+                    except OSError:
+                        break
+                    i += 1
+                    if "cc4" not in sub.lower() and "comsoft" not in sub.lower() and "testo" not in sub.lower():
+                        continue
+                    try:
+                        sk = winreg.OpenKey(k, sub)
+                        p = str(winreg.QueryValueEx(sk, "")[0])
+                    except OSError:
+                        continue
+                    p = (p or "").strip().strip('"')
+                    if p:
+                        _add(p)
+    except Exception:
+        pass
+
+    # 2) 已装软件 InstallLocation 深度扫描
+    softwares = _find_testo_software()
+    for sw in softwares:
+        loc = sw.get("location") or ""
+        if loc and os.path.isdir(loc):
+            for root, dirs, files in os.walk(loc):
+                if root.count(os.sep) - os.path.normpath(loc).count(os.sep) > 4:
+                    dirs[:] = []
+                    continue
+                for f in files:
+                    fl = f.lower()
+                    if fl.endswith(".exe") and ("comsoft" in fl or "testo" in fl or fl.startswith("cc4")):
+                        _add(os.path.join(root, f))
+
+    # 3) 开始菜单快捷方式（读取 .lnk 内嵌路径）
+    for base in ("ProgramData", "APPDATA"):
+        b = os.environ.get(base)
+        if not b:
+            continue
+        sm = os.path.join(b, "Microsoft", "Windows", "Start Menu")
+        if not os.path.isdir(sm):
+            continue
+        for root, dirs, files in os.walk(sm):
+            for f in files:
+                if not f.lower().endswith(".lnk"):
+                    continue
+                fpath = os.path.join(root, f)
+                if "comsoft" not in f.lower() and "testo" not in f.lower() and "cc4" not in f.lower():
+                    continue
+                try:
+                    with open(fpath, "rb") as fh:
+                        raw = fh.read()
+                    try:
+                        s = raw.decode("utf-16-le", "ignore")
+                    except Exception:
+                        s = ""
+                    for tok in ("cc4.exe", "ComSoft.exe", "Comsoft.exe", "Testo.exe",
+                                "cc4", "ComSoft", "Comsoft", "Testo"):
+                        idx = s.lower().find(tok.lower())
+                        if idx < 0:
+                            continue
+                        lo = s.rfind(":", 0, idx)
+                        if lo < 0:
+                            lo = max(0, idx - 60)
+                        hi = s.find(chr(0), idx)
+                        seg = s[lo:hi] if hi > lo else s[lo:]
+                        seg = seg.replace(chr(0), "")
+                        cand = seg.strip().strip('"')
+                        if cand and cand.lower().endswith(".exe"):
+                            _add(cand)
+                except Exception:
+                    continue
+
+    # 4) 原有常见目录扫描
     roots = []
     for env in ("ProgramFiles", "ProgramFiles(x86)", "ProgramW6432", "LOCALAPPDATA", "APPDATA"):
         base = os.environ.get(env)
@@ -1950,8 +2046,45 @@ def _find_testo_exes():
             for f in files:
                 fl = f.lower()
                 if fl.endswith(".exe") and ("comsoft" in fl or "testo" in fl or fl.startswith("cc4")):
-                    exes.append(os.path.join(root, f))
+                    _add(os.path.join(root, f))
+
     return exes
+
+
+_CC4_PATH_FILE = os.path.join(APP_DATA_DIR, "cc4_path.txt")
+
+
+def _saved_cc4_path():
+    try:
+        if os.path.isfile(_CC4_PATH_FILE):
+            with open(_CC4_PATH_FILE, "r", encoding="utf-8") as f:
+                p = f.read().strip().strip('"')
+            if p and os.path.isfile(p):
+                return p
+    except Exception:
+        pass
+    return ""
+
+
+def _save_cc4_path(p):
+    try:
+        os.makedirs(APP_DATA_DIR, exist_ok=True)
+        with open(_CC4_PATH_FILE, "w", encoding="utf-8") as f:
+            f.write((p or "").strip().strip('"'))
+    except Exception:
+        pass
+
+
+@app.route("/api/comsoft/set-path", methods=["POST"])
+def comsoft_set_path():
+    data = request.get_json(silent=True) or {}
+    p = (data.get("exe") or "").strip().strip('"')
+    if not p:
+        return jsonify({"error": "路径为空"}), 400
+    if not os.path.isfile(p):
+        return jsonify({"error": "文件不存在: %s" % p}), 404
+    _save_cc4_path(p)
+    return jsonify({"ok": True, "saved": p})
 
 
 @app.route("/api/comsoft/detect", methods=["GET"])
@@ -1967,7 +2100,7 @@ def comsoft_detect():
         if any(e.lower().startswith(p) for p in known_paths if p):
             continue
         softwares.append({"name": os.path.basename(e), "location": os.path.dirname(e), "exe": e})
-    return jsonify({"platform": sys.platform, "softwares": softwares})
+    return jsonify({"platform": sys.platform, "softwares": softwares, "saved": _saved_cc4_path()})
 
 
 @app.route("/api/comsoft/launch", methods=["POST"])
@@ -1976,24 +2109,21 @@ def comsoft_launch():
     data = request.get_json(silent=True) or {}
     target = (data.get("exe") or "").strip().strip('"')
     if not target:
-        # 没给路径就自动找第一个
+        # 1) 优先用户手动保存过的路径
+        target = _saved_cc4_path()
+    if not target:
+        # 2) 增强自动扫描
         exes = _find_testo_exes()
-        softwares = _find_testo_software()
+        # cc4.exe 优先，其次 comsoft
+        def _rank(p):
+            pl = p.lower()
+            if pl.endswith("cc4.exe"): return 0
+            if "cc4" in pl: return 1
+            if "comsoft" in pl: return 2
+            return 3
+        exes.sort(key=_rank)
         if exes:
             target = exes[0]
-        elif softwares:
-            for sw in softwares:
-                loc = sw.get("location") or ""
-                if loc and os.path.isdir(loc):
-                    for root, dirs, files in os.walk(loc):
-                        for f in files:
-                            if f.lower().endswith(".exe") and ("comsoft" in f.lower() or "testo" in f.lower()):
-                                target = os.path.join(root, f)
-                                break
-                        if target:
-                            break
-                if target:
-                    break
     if not target or not os.path.isfile(target):
         return jsonify({"error": "未找到 Testo/ComSoft 软件的可执行文件，请手动打开软件"}), 404
     try:
