@@ -2430,7 +2430,7 @@ def _export_batch_excel(devices):
             ws.append([_batch_rec_time(r), t])
         ws.column_dimensions["A"].width = 34
         ws.column_dimensions["B"].width = 12
-        fname = "测点%d_%s.xlsx" % (idx, today)
+        fname = "测点%d.xlsx" % idx
         p = os.path.join(tmpdir, fname)
         wb.save(p)
         created.append((fname, p))
