@@ -14,6 +14,7 @@ import platform
 import subprocess
 import sqlite3
 import threading
+import base64
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, render_template, send_file
@@ -2711,21 +2712,122 @@ def all_devices_clear():
     return jsonify({"ok": True})
 
 
+def _find_desktop():
+    """返回桌面路径（兼容 OneDrive/中文桌面），找不到返回 None"""
+    try:
+        home = os.path.expanduser("~")
+        for cand in (os.path.join(home, "Desktop"), os.path.join(home, "桌面"),
+                     os.path.join(home, "OneDrive", "Desktop"), os.path.join(home, "OneDrive", "桌面")):
+            if os.path.isdir(cand):
+                return cand
+        return home
+    except Exception:
+        return None
+
+
+def _ensure_desktop_shortcut():
+    """首次运行在桌面创建「Testo184 数据汇总工具.lnk」快捷方式指向本程序。仅 Windows + 打包后生效。"""
+    if platform.system() != "Windows":
+        return
+    exe = os.path.abspath(sys.executable if getattr(sys, "frozen", False) else "")
+    if not exe or not exe.lower().endswith(".exe"):
+        return  # 源码运行不需要快捷方式
+    desktop = _find_desktop()
+    if not desktop:
+        return
+    lnk = os.path.join(desktop, "Testo184 数据汇总工具.lnk")
+    if os.path.exists(lnk):
+        return  # 已存在不重复创建
+    # 用 PowerShell WScript.Shell 创建 .lnk（避免依赖第三方库）
+    try:
+        ps = (
+            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('" + lnk + "');"
+            "$s.TargetPath='" + exe + "';"
+            "$s.WorkingDirectory='" + os.path.dirname(exe) + "';"
+            "$s.IconLocation='" + exe + ",0';"
+            "$s.Save()"
+        )
+        import base64
+        enc = base64.b64encode(ps.encode("utf-16-le")).decode("ascii")
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+                        "-EncodedCommand", enc], capture_output=True, timeout=30)
+    except Exception:
+        pass
+
+
+def _ensure_autostart():
+    """开机自启：写 HKCU Run 键。仅 Windows；Linux/macOS 跳过。"""
+    if platform.system() != "Windows":
+        return
+    exe = os.path.abspath(sys.executable if getattr(sys, "frozen", False) else "")
+    if not exe or not exe.lower().endswith(".exe"):
+        return
+    try:
+        import winreg
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER,
+                             r"Software\Microsoft\Windows\CurrentVersion\Run",
+                             0, winreg.KEY_SET_VALUE)
+        # 用参数 --service：开机启动时不重复打开浏览器
+        winreg.SetValueEx(key, "Testo184Tool", 0, winreg.REG_SZ,
+                          '"%s" --service' % exe)
+        winreg.CloseKey(key)
+    except Exception:
+        pass
+
+
+def _service_running(port):
+    """探测端口是否已有服务在跑（避免重复启动/端口冲突）。"""
+    try:
+        import socket
+        s = socket.create_connection(("127.0.0.1", int(port)), timeout=0.6)
+        s.close()
+        return True
+    except OSError:
+        return False
+
+
 if __name__ == "__main__":
     init_db()
-    print()
-    print("╔══════════════════════════════════════════════════╗")
-    print("║   Testo 184 温度计数据读取汇总工具              ║")
-    print("╠══════════════════════════════════════════════════╣")
-    print("║                                                  ║")
-    print("║   请在浏览器中打开:                              ║")
-    print("║   ➜  http://localhost:8000                       ║")
-    print("║                                                  ║")
-    print("║   按 Ctrl+C 停止服务                             ║")
-    print("║                                                  ║")
-    print("╚══════════════════════════════════════════════════╝")
-    print()
-    # 注意：不用 5000 端口，macOS 的 AirPlay 接收器默认占用 5000 端口
+    is_service = "--service" in sys.argv  # 开机自启后台模式
+    port = int(os.environ.get("TESTO_PORT", 8000))
+
+    if not is_service:
+        # 普通双击：自动建桌面快捷方式 + 注册开机自启
+        _ensure_desktop_shortcut()
+        _ensure_autostart()
+        print()
+        print("╔══════════════════════════════════════════════════╗")
+        print("║   Testo 184 温度计数据读取汇总工具              ║")
+        print("╠══════════════════════════════════════════════════╣")
+        print("║                                                  ║")
+        print("║   请在浏览器中打开:                              ║")
+        print("║   ➜  http://localhost:%d                       ║" % port)
+        print("║                                                  ║")
+        print("║   已在本机桌面创建快捷方式，并设为开机自启       ║")
+        print("║   之后开机自动运行，直接打开网页即可使用         ║")
+        print("║                                                  ║")
+        print("║   按 Ctrl+C 停止本次服务                         ║")
+        print("╚══════════════════════════════════════════════════╝")
+        print()
+        # 若服务已在运行（开机自启已起）：只开浏览器，不重复启动服务
+        if _service_running(port):
+            def _open_only():
+                import time
+                time.sleep(0.5)
+                import webbrowser
+                try:
+                    webbrowser.open("http://localhost:%d" % port)
+                except Exception:
+                    pass
+            threading.Thread(target=_open_only, daemon=True).start()
+            print("  服务已在后台运行，已为你打开浏览器。本窗口可以直接关闭。")
+            import time as _t
+            _t.sleep(2)
+            sys.exit(0)
+    else:
+        # 开机自启后台模式：静默启动，不打印、不重复开浏览器
+        if _service_running(port):
+            sys.exit(0)
 
     # 自动在默认浏览器中打开（服务启动后延迟打开，避免端口未就绪）
     def _open_browser():
@@ -2733,9 +2835,10 @@ if __name__ == "__main__":
         time.sleep(1.0)
         import webbrowser
         try:
-            webbrowser.open("http://localhost:8000")
+            webbrowser.open("http://localhost:%d" % port)
         except Exception:
             pass
 
     threading.Thread(target=_open_browser, daemon=True).start()
-    app.run(host="0.0.0.0", port=int(os.environ.get("TESTO_PORT", 8000)), debug=False)
+    app.run(host="0.0.0.0", port=port, debug=False)
+
