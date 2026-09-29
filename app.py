@@ -2246,7 +2246,27 @@ def batch_start():
     BATCH["id"] = str(int(_t.time() * 1000))
     BATCH["devices"] = []
     BATCH["running"] = True
-    return jsonify({"ok": True, "batch_id": BATCH["id"]})
+    folder = _ensure_desktop_raw_folder()
+    return jsonify({"ok": True, "batch_id": BATCH["id"], "raw_folder": folder})
+
+
+def _ensure_desktop_raw_folder():
+    """在桌面创建「温度计原始数据-日期」文件夹，作为 ComSoft 接力导出目录并返回路径"""
+    try:
+        home = os.path.expanduser("~")
+        desktop = None
+        for cand in (os.path.join(home, "Desktop"), os.path.join(home, "桌面"),
+                     os.path.join(home, "OneDrive", "桌面"), os.path.join(home, "OneDrive", "Desktop")):
+            if os.path.isdir(cand):
+                desktop = cand
+                break
+        if desktop is None:
+            desktop = home
+        folder = os.path.join(desktop, "温度计原始数据-%s" % datetime.now().strftime("%Y-%m-%d"))
+        os.makedirs(folder, exist_ok=True)
+        return folder
+    except Exception:
+        return ""
 
 
 @app.route("/api/batch/detect", methods=["POST"])

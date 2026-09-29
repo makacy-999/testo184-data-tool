@@ -875,8 +875,13 @@ async function batchStart() {
     document.getElementById('btn-batch-next').style.display = 'none';
     document.getElementById('btn-batch-clear').style.display = '';
     document.getElementById('batch-current').innerHTML = '';
+    let hint = '① 批次已重置，请<b>插入第 1 台温度计</b>，然后点「🔍 检测当前设备」';
+    if (r && r.raw_folder) {
+        hint += '<br><br>📁 已创建归档文件夹：<b>' + esc(r.raw_folder) + '</b>。' +
+            '如需用 Comfort Software(cc4.exe) 读取，请把导出的 <b>.vi2</b> 文件保存到该文件夹，工具会自动识别并读入这台设备的数据。';
+    }
+    setBatchStepHint(hint);
     setBatchList([]);
-    setBatchStepHint('① 批次已重置，请<b>插入第 1 台温度计</b>，然后点「🔍 检测当前设备」');
 }
 async function batchDetect() {
     const box = document.getElementById('batch-current');
