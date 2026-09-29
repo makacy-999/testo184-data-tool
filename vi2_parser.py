@@ -132,6 +132,7 @@ def parse_vi2(file_path, sample_minutes=None, start_time=None):
                 "t_code": r["t_code"],
             })
 
+        limit_min, limit_max = _extract_limits(ole)
         return {
             "serial_number": sn or "未知",
             "device_type": dtype or "",
@@ -139,10 +140,43 @@ def parse_vi2(file_path, sample_minutes=None, start_time=None):
             "record_count": len(out),
             "sample_minutes": sample_minutes,
             "start_time": start_time.strftime("%Y-%m-%d %H:%M:%S"),
+            "limit_min": limit_min,
+            "limit_max": limit_max,
             "records": out,
         }
+
     finally:
         ole.close()
+def _extract_limits(ole):
+    """从 audittrail 提取极限值(下限/上限)。Action 5768=下限, 5769=上限。找不到返回 (None,None)"""
+    if not ole.exists("audittrail"):
+        return None, None
+    try:
+        text = ole.openstream("audittrail").read().decode("utf-8", "ignore")
+    except Exception:
+        return None, None
+    import re
+    limit_min = limit_max = None
+    # 匹配 Comments='25.00   C:1 °C' Action='5769' 或 Action 在前后
+    rows = re.findall(r"Comments='([^']*)'[^>]*Action='(\d+)'", text)
+    for comment, action in rows:
+        m = re.search(r"([-+]?\d+(?:\.\d+)?)\s*C\s*:\s*\d+\s*[^\s']*", comment)
+        if not m:
+            m = re.search(r"([-+]?\d+(?:\.\d+)?)\s*°?\s*C", comment)
+        if not m:
+            continue
+        try:
+            val = float(m.group(1))
+        except ValueError:
+            continue
+        if action == "5768" and limit_min is None:
+            limit_min = val
+        elif action == "5769" and limit_max is None:
+            limit_max = val
+    return limit_min, limit_max
+
+
+# parse_vi2 的 finally 收尾在下文恢复
 
 
 def _infer_sample_minutes(ole):

@@ -2433,23 +2433,79 @@ def _export_batch_excel(devices):
 
     created = []  # (文件名, 路径)
 
-    # ── 每个测点一个独立 xlsx：测点N.xlsx（时间+温度） ──
+    # ── 每个测点一个独立 xlsx：测点N.xlsx（头部信息块 + 时间/温度） ──
     for idx, d in enumerate(valid, 1):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "测点%d" % idx
-        ws["A1"] = "时间"
-        ws["B1"] = "温度(°C)"
-        for c in ("A1", "B1"):
-            ws[c].font = Font(bold=True, color="FFFFFF")
-            ws[c].fill = PatternFill("solid", fgColor="4472C4")
+        unit = str(d.get("unit") or "°C").strip() or "°C"
+        sn = str(d.get("sn") or "").strip()
+        # 记录时间列表
+        times = []
+        temps = []
         for r in d.get("records") or []:
             t = _tval(r)
             if t is None:
                 continue
-            ws.append([_batch_rec_time(r), t])
-        ws.column_dimensions["A"].width = 34
-        ws.column_dimensions["B"].width = 12
+            times.append(_batch_rec_time(r))
+            temps.append(t)
+        # 统计
+        tmin = round(min(temps), 2) if temps else ""
+        tmax = round(max(temps), 2) if temps else ""
+        tavg = round(sum(temps) / len(temps), 2) if temps else ""
+        lm = d.get("limit_min")
+        lx = d.get("limit_max")
+        limit_str = ""
+        if lm is not None and lx is not None:
+            limit_str = "%s/%s" % (lm, lx)
+        start_t = d.get("start_time") or (times[0] if times else "")
+        end_t = times[-1] if times else ""
+        exp_time = datetime.now().strftime("%Y/%m/%d %H:%M:%S")
+        # 通道名+单位，如 "no name [°C]"；设备名称用 SN
+        chan = "no name [%s]" % unit
+        # ---- 头部信息块（参照样表） ----
+        # 行1 设备名称 + 导出时间
+        ws["A1"] = "设备名称: " + (sn or "未知")
+        ws["E1"] = exp_time
+        # 行2 起始时间 + 统计标签
+        ws["A2"] = "起始时间: " + start_t.replace("-", "/")
+        ws["C2"], ws["D2"], ws["E2"], ws["F2"] = "最小值", "最大值", "均值", "极限值"
+        # 行3 结束时间 + 统计值
+        ws["A3"] = "结束时间: " + (str(end_t).replace("-", "/") if end_t else "")
+        ws["B3"] = chan
+        ws["C3"], ws["D3"], ws["E3"], ws["F3"] = tmin, tmax, tavg, limit_str
+        # 行4/5/6
+        ws["A4"] = "测量通道: 1"
+        ws["A5"] = "测量值: %d" % len(temps)
+        ws["A6"] = "SN %s" % (sn or "未知")
+        # 样式：头部标签加粗，统计表头加粗蓝底
+        for rr, cnames in ((2, ("C2", "D2", "E2", "F2")),):
+            for c in cnames:
+                ws[c].font = Font(bold=True, color="FFFFFF")
+                ws[c].fill = PatternFill("solid", fgColor="4472C4")
+        for c in ("A1", "A2", "A3", "A4", "A5", "A6", "B3"):
+            ws[c].font = Font(bold=True)
+        # 空行第7行
+        # 行8 数据表头
+        hdr_row = 8
+        ws.cell(hdr_row, 1, "id")
+        ws.cell(hdr_row, 2, "日期/时间")
+        ws.cell(hdr_row, 3, chan)
+        for c in range(1, 4):
+            cc = ws.cell(hdr_row, c)
+            cc.font = Font(bold=True, color="FFFFFF")
+            cc.fill = PatternFill("solid", fgColor="4472C4")
+        # 数据行
+        for i, (tm, tv) in enumerate(zip(times, temps), 1):
+            ws.cell(hdr_row + i, 1, i)
+            ws.cell(hdr_row + i, 2, tm)
+            ws.cell(hdr_row + i, 3, tv)
+        ws.column_dimensions["A"].width = 16
+        ws.column_dimensions["B"].width = 22
+        ws.column_dimensions["C"].width = 16
+        ws.column_dimensions["D"].width = 12
+        ws.column_dimensions["E"].width = 12
+        ws.column_dimensions["F"].width = 12
         fname = "测点%d.xlsx" % idx
         p = os.path.join(tmpdir, fname)
         wb.save(p)
@@ -2547,6 +2603,10 @@ def vi2_batch_upload():
             VI2_BATCH["devices"].append({
                 "sn": sn, "records": recs, "file": fname,
                 "source": "vi2全量(批量上传)",
+                "unit": data.get("unit", "°C"),
+                "limit_min": data.get("limit_min"),
+                "limit_max": data.get("limit_max"),
+                "start_time": data.get("start_time", ""),
             })
             dexists.add(sn)
             added.append({
