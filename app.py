@@ -2533,18 +2533,22 @@ def _export_batch_excel(devices):
         c2.font = Font(bold=True, color="FFFFFF")
         c1.fill = PatternFill("solid", fgColor="4472C4")
         c2.fill = PatternFill("solid", fgColor="4472C4")
+    # 各测点：分钟key -> 温度（同批测点起始秒不同，但采样为整分钟，按分钟对齐）
     maps = []
-    all_times = set()
     for d in valid:
         m = {}
         for r in d.get("records") or []:
             t = _tval(r)
             if t is None:
                 continue
-            key = _batch_rec_time(r)
+            key = _batch_rec_time(r)[:16]  # 分钟级对齐，忽略起始秒差异
             m[key] = t
-            all_times.add(key)
         maps.append(m)
+    # 时间轴 = 所有测点分钟的「合集」：各测点起止时间可能有偏差，取全部测点出现的
+    # 分钟去重并升序作为首列，每个测点按该分钟匹配填入温度，无数据则留空，不改原始数据
+    all_times = set()
+    for m in maps:
+        all_times.update(m.keys())
     for t in sorted(all_times):
         row = [t]
         for m in maps:
