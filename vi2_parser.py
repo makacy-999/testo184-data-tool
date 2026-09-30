@@ -104,27 +104,45 @@ def parse_vi2(file_path, sample_minutes=None, start_time=None):
         unit = _find_channels_unit(ole, data_dir)
         records = _parse_values(ole, data_dir) if data_dir else []
 
-        # 采样间隔：未指定时从 audittrail 推断；Testo 184 常见 2/5/8 分钟
+        # ── 采样间隔：从 values 时间码的主流间隔推断，绝不用 audittrail 极限值 ──
+        # 每 64 个时间码 = 1 分钟(固定分辨率)；主流相邻时间码差 ÷ 64 = 采样间隔分钟。
+        # 例如主流间隔 64 → 1 分钟/条，128 → 2 分钟/条。
+        # 注意：values 里偶有 320/33088 等大跳变，是设备采样中断的计数缺口，不是真实记录间隔，
+        # 推导采样间隔时只取“主流间隔”(出现次数最多的差值)。
         if not sample_minutes:
-            sample_minutes = _infer_sample_minutes(ole) or 2.0
+            sample_minutes = _infer_sample_minutes_from_values(records) or 1.0
 
-        # 时间基站：可指定；否则用 audittrail 的最后操作时间倒推
+        # ── 测量起始时间：优先 alrtobject(测量开始的真实绝对时间) ──
+        # alrtobject 的 c0 即测量开始时刻，是 ComSoft 导出 Excel 所用的权威锚点，
+        # 比 audittrail(导出操作时刻)可靠得多。仅当无报警/无 alrtobject 时才回退。
         if not start_time:
-            end_hint = _last_audit_time(ole)
-            if end_hint and records:
-                total_min = (records[-1]["t_code"] - records[0]["t_code"]) * (sample_minutes / 64.0)
-                start_time = end_hint - timedelta(minutes=total_min)
-            else:
-                start_time = datetime.now().replace(second=0, microsecond=0)
+            alrt_start, alrt_end = _extract_alrt_range(ole)
+            if alrt_start:
+                try:
+                    start_time = datetime.strptime(
+                        alrt_start[:19], "%Y-%m-%dT%H:%M:%S")
+                except ValueError:
+                    try:
+                        start_time = datetime.strptime(
+                            alrt_start[:19], "%Y-%m-%d %H:%M:%S")
+                    except ValueError:
+                        start_time = None
+            if not start_time:
+                # 回退：用 audittrail 最后操作时间 - 记录总跨度(仅当无 alrtobject)
+                end_hint = _last_audit_time(ole)
+                if end_hint and records:
+                    start_time = end_hint - timedelta(minutes=(len(records) - 1) * sample_minutes)
+                else:
+                    start_time = datetime.now().replace(second=0, microsecond=0)
         elif isinstance(start_time, str):
             start_time = datetime.strptime(start_time, "%Y-%m-%d %H:%M:%S")
 
-        # 生成带时间的记录
-        per_unit_min = sample_minutes / 64.0  # 每个时间码单位对应分钟数
+        # ── 生成带时间的记录：按记录条索引等间隔累加，而非按时间码差 ──
+        # 记录采样是均匀的(每 sample_minutes 分钟一条)，故时间 = 起始时间 + 索引×采样间隔。
+        # (若按 t_code 差累加，320/33088 的中断缺口会被错误计入真实经过时间，导致时间错乱。)
         out = []
         for idx, r in enumerate(records):
-            delta_min = (r["t_code"] - records[0]["t_code"]) * per_unit_min
-            dt = start_time + timedelta(minutes=delta_min)
+            dt = start_time + timedelta(minutes=idx * sample_minutes)
             out.append({
                 "date": dt.strftime("%Y-%m-%d"),
                 "time": dt.strftime("%H:%M:%S"),
@@ -147,6 +165,30 @@ def parse_vi2(file_path, sample_minutes=None, start_time=None):
 
     finally:
         ole.close()
+
+def _extract_alrt_range(ole):
+    """从 alrtobject/rcrds 提取测量起止绝对时间(权威锚点)。
+
+    alrtobject 是设备触发报警的时段记录，其 c0=测量开始时间、c1=测量结束时间，
+    是 vi2 内最可靠的测量起止时间戳（ComSoft 导出 Excel 即以此为准）。
+    返回 (start_str, end_str) 或 (None, None)。
+    """
+    try:
+        for entry in ole.listdir():
+            if 'alrtobject' in entry and entry[-1] == 'rcrds':
+                text = ole.openstream(entry).read().decode("utf-8", "ignore")
+                import re as _re
+                m = _re.search(r"c0='([^']+)'[^>]*c1='([^']+)'", text)
+                if m:
+                    return m.group(1), m.group(2)
+                m0 = _re.search(r"c0='([^']+)'", text)
+                m1 = _re.search(r"c1='([^']+)'", text)
+                if m0 and m1:
+                    return m0.group(1), m1.group(2)
+    except Exception:
+        pass
+    return None, None
+
 def _extract_limits(ole):
     """从 audittrail 提取极限值(下限/上限)。Action 5768=下限, 5769=上限。找不到返回 (None,None)"""
     if not ole.exists("audittrail"):
@@ -177,6 +219,29 @@ def _extract_limits(ole):
 
 
 # parse_vi2 的 finally 收尾在下文恢复
+
+
+def _infer_sample_minutes_from_values(records):
+    """从 values 时间码的主流相邻间隔推断采样间隔(分钟)。
+
+    每 64 个时间码 = 1 分钟(固定分辨率)。取相邻 t_code 差中出现次数最多的值为主流间隔，
+    采样间隔 = 主流间隔 / 64。中断缺口(320/33088 等)不计入主流，故不影响判断。
+    """
+    if not records:
+        return None
+    from collections import Counter
+    gaps = Counter()
+    for i in range(1, len(records)):
+        g = records[i]["t_code"] - records[i - 1]["t_code"]
+        if g > 0:
+            gaps[g] += 1
+    if not gaps:
+        return None
+    main_gap = gaps.most_common(1)[0][0]
+    sample_min = main_gap / 64.0
+    if 0.1 <= sample_min <= 1440:
+        return sample_min
+    return None
 
 
 def _infer_sample_minutes(ole):
