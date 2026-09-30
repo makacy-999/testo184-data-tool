@@ -2461,7 +2461,7 @@ def _export_batch_excel(devices):
         # 统计
         tmin = round(min(temps), 2) if temps else ""
         tmax = round(max(temps), 2) if temps else ""
-        tavg = round(sum(temps) / len(temps), 2) if temps else ""
+        tavg = round(sum(temps) / len(temps), 3) if temps else ""
         lm = d.get("limit_min")
         lx = d.get("limit_max")
         limit_str = ""
