@@ -2424,16 +2424,12 @@ def _export_batch_excel(devices):
     def _tval(r):
         return _batch_temp_val(r.get("temperature"))
 
-    # 仅取有记录且能读到温度的设备（按唯一 SN 去重，与统一池一致）
-    seen_sn = set()
+    # 每个测点（vi2/设备）都保留，至少要有能读到温度的记录；不按 SN 去重，
+    # 因为不同测点文件即使 SN 相同（如同一型号设备不同批次）也是独立测点，不能合并丢失。
     valid = []
     for d in devices:
-        sn = str(d.get("sn") or "").strip()
-        if not sn or sn in seen_sn:
-            continue
         n = sum(1 for r in d.get("records") or [] if _tval(r) is not None)
         if n > 0:
-            seen_sn.add(sn)
             valid.append(d)
     if not valid:
         raise ValueError("没有可用数据")
@@ -2452,7 +2448,7 @@ def _export_batch_excel(devices):
         ws = wb.active
         ws.title = "测点%d" % idx
         unit = str(d.get("unit") or "°C").strip() or "°C"
-        sn = str(d.get("sn") or "").strip()
+        sn = str(d.get("sn") or d.get("serial_number") or "").strip()
         # 记录时间列表
         times = []
         temps = []
@@ -2528,7 +2524,7 @@ def _export_batch_excel(devices):
     wb = openpyxl.Workbook()
     summary = wb.active
     summary.title = "汇总数据"
-    summary.append(["温度计号"] + [str(d.get("sn") or "") for d in valid])
+    summary.append(["温度计号"] + [str(d.get("sn") or d.get("serial_number") or "") for d in valid])
     summary.append(["日期"] + ["测点%d" % i for i in range(1, len(valid) + 1)])
     for col in range(1, len(valid) + 2):
         c1 = summary.cell(1, col)
@@ -2594,7 +2590,8 @@ def vi2_batch_upload():
         return jsonify({"error": "未收到文件"}), 400
     tmp_dir = os.path.join(APP_DATA_DIR, "tmp")
     os.makedirs(tmp_dir, exist_ok=True)
-    dexists = {d["sn"] for d in VI2_BATCH["devices"]}
+    # 按“源文件名”去重，而不是 SN：同一型号设备不同批次/文件即使 SN 相同也是独立测点
+    dexists = {d.get("file") for d in VI2_BATCH["devices"]}
     added, errors = [], []
     for file in files:
         fname = file.filename or ""
@@ -2610,8 +2607,8 @@ def vi2_batch_upload():
             if not recs:
                 errors.append({"file": fname, "error": "未解析到数据"})
                 continue
-            if sn in dexists:
-                errors.append({"file": fname, "error": f"SN {sn} 已上传，跳过重复"})
+            if fname in dexists:
+                errors.append({"file": fname, "error": f"文件 {fname} 已上传，跳过重复"})
                 continue
             VI2_BATCH["devices"].append({
                 "sn": sn, "records": recs, "file": fname,
@@ -2621,7 +2618,7 @@ def vi2_batch_upload():
                 "limit_max": data.get("limit_max"),
                 "start_time": data.get("start_time", ""),
             })
-            dexists.add(sn)
+            dexists.add(fname)
             added.append({
                 "file": fname, "sn": sn, "record_count": len(recs),
                 "unit": data.get("unit", "°C"),
@@ -2671,22 +2668,26 @@ def vi2_batch_export():
 # ─── v3.2.0 统一数据池：两种读取方式(设备读取/vi2批量导入)合并，一键导出 ───
 
 def _unified_devices():
-    """合并 设备读取(BATCH) + vi2批量导入(VI2_BATCH)，按 SN 去重，优先取记录更全者。"""
+    """合并 设备读取(BATCH) + vi2批量导入(VI2_BATCH)。
+
+    注意：不按 SN 去重/合并——同一型号设备可能被读取成多个测点（不同文件/批次），
+    SN 相同不代表是同一个测点。这里按“文件唯一键”合并，避免同文件被不同来源重复加入，
+    但保留所有不同文件（不同测点）的设备。
+    """
     merged = {}
-    for d in BATCH.get("devices", []):
-        sn = str(d.get("sn") or "").strip()
-        if not sn:
+    def _key(d):
+        # 优先用具体文件路径/文件名；都没有才退回 SN
+        return (d.get("path") or d.get("file") or d.get("name") or
+                ("SN:" + str(d.get("sn") or "")))
+    def _recs(d):
+        return d.get("records") or []
+    for d in list(BATCH.get("devices", [])) + list(VI2_BATCH.get("devices", [])):
+        key = _key(d)
+        if not key:
             continue
-        cur = merged.get(sn)
-        if cur is None or len(d.get("records") or []) > len(cur.get("records") or []):
-            merged[sn] = dict(d)
-    for d in VI2_BATCH.get("devices", []):
-        sn = str(d.get("sn") or "").strip()
-        if not sn:
-            continue
-        cur = merged.get(sn)
-        if cur is None or len(d.get("records") or []) > len(cur.get("records") or []):
-            merged[sn] = dict(d, sn=sn)
+        cur = merged.get(key)
+        if cur is None or len(_recs(d)) > len(_recs(cur)):
+            merged[key] = dict(d)
     return list(merged.values())
 
 
