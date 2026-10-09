@@ -23,6 +23,13 @@ jobs:
       - name: Install dependencies
         run: pip install flask openpyxl pdfplumber olefile pyinstaller comtypes pywin32
 
+      - name: Pre-generate comtypes UIAutomationClient module
+        shell: bash
+        run: |
+          # comtypes.gen.UIAutomationClient 是运行时动态生成的；必须先在本机生成，
+          # 否则 PyInstaller 收集不到、单exe运行时 import 失败（No module named）。
+          python -c "import comtypes.client; comtypes.client.GetModule('UIAutomationCore.dll'); import comtypes.gen.UIAutomationClient as _u; print('UIA generated at', _u.__file__)"
+
       - name: Build main executable (single exe, includes collector)
         shell: bash
         run: |
@@ -34,6 +41,8 @@ jobs:
             --collect-all comtypes \
             --hidden-import comtypes.stream \
             --hidden-import comtypes.automation \
+            --hidden-import comtypes.gen.UIAutomationClient \
+            --collect-submodules comtypes.gen \
             app.py
           # 打印 exe 大小便于核对
           python -c "import glob,os; [print('  EXE', f, os.path.getsize(f)//1024, 'KB') for f in glob.glob('dist/*.exe')]"

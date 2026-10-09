@@ -156,13 +156,35 @@ def check_deps():
             return None
 
 
+def _ensure_uia_module():
+    """确保 comtypes.gen.UIAutomationClient 可导入。
+
+    打包(单exe)后该模块可能未收集。onefile 的 _MEIPASS 是临时可写目录，
+    comtypes 完整打进后，GetModule 可在此正常生成。
+    兜底：1) 直接 import；2) comtypes.client.GetModule 动态生成后重 import。
+    返回模块对象，失败抛 ImportError。
+    """
+    try:
+        import comtypes.gen.UIAutomationClient as nv
+        return nv
+    except Exception:
+        pass
+    import comtypes.client as cc
+    try:
+        cc.GetModule("UIAutomationCore.dll")
+        import comtypes.gen.UIAutomationClient as nv2
+        return nv2
+    except Exception as e:
+        raise ImportError("无法加载 comtypes.gen.UIAutomationClient: %s" % e)
+
+
 # ============================================================
 #  UIA 轻封装（RawViewWalker 逐层遍历，绝不 FindAll）
 # ============================================================
 class UIA:
     def __init__(self):
         import comtypes.client as cc
-        import comtypes.gen.UIAutomationClient as nv
+        nv = _ensure_uia_module()
         self.n = nv
         self.api = cc.CreateObject("{ff48dba4-60ef-4201-aa87-54103eef594e}",
                                    interface=nv.IUIAutomation)
