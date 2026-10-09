@@ -1167,8 +1167,13 @@ async function allClear() {
 function setBatchList(devices) {
     const el = document.getElementById('batch-list');
     if (!devices || !devices.length) { el.innerHTML = '<div style="color:#666;font-size:13px">已读取设备列表为空</div>'; return; }
-    el.innerHTML = '<div style="font-size:13px;color:#666;margin-bottom:6px">已读取设备：</div>' +
-        devices.map((d, i) =>
-            '<div style="padding:6px 10px;margin:4px 0;background:#f3f7fb;border-radius:6px;font-size:13px">' +
-            (i + 1) + '. <b>SN ' + esc(d.sn) + '</b> — ' + d.record_count + ' 条（' + esc(d.source || '') + '）</div>').join('');
+    const total = devices.length;
+    const rows = devices.map((d, i) =>
+        '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;margin:5px 0;background:#f0f8f0;border:1px solid #cdeccd;border-radius:7px;font-size:13px">' +
+        '<span>#' + (i + 1) + ' &nbsp;<b>SN ' + esc(d.sn) + '</b> &nbsp;<span style="color:#888">(' + d.record_count + ' 条 · ' + esc(d.source || '') + ')</span></span>' +
+        '<span style="color:#2e8b57;font-weight:bold;white-space:nowrap">✓ 已读取完成，可安全拔出</span>' +
+        '</div>').join('');
+    el.innerHTML = '<div style="font-size:14px;font-weight:bold;color:#2e8b57;margin-bottom:8px">✓ RPA 采集成功：共 ' + total + ' 台已完成</div>' +
+        '<div style="font-size:12px;color:#888;margin-bottom:6px">号码 # 对应验收时依次插拔的温度计，读取成功后设备会出现在下方列表，即可拔出继续下一台。</div>' +
+        rows;
 }
