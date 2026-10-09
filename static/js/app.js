@@ -927,6 +927,10 @@ async function batchStart() {
         document.getElementById('btn-batch-start').disabled = false;
         return;
     }
+    // 先开始批次（置 BATCH.running=True），否则 autoscan/列表读入恒为空
+    try {
+        await fetch('/api/batch/start', { method: 'POST' }).then(x => x.json());
+    } catch (e) { /* 忽略 */ }
     try {
         const r = await fetch('/api/collector/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) }).then(x => x.json());
         if (!r.ok) {
