@@ -215,7 +215,7 @@ class DeviceDetector:
                     for root, dirs, files in os.walk(mp):
                         # 不排除隐藏目录：Testo 设备数据文件可能位于隐藏/系统目录（如 .SystemVolumeInformation）
                         dirs[:] = [d for d in dirs
-                                   if d.lower() not in ("found.000", "system volume information")
+                                   if d.lower() not in ("found.000", "system volume information", "已读")
                                    and d.lower() != "$recycle.bin"]
                         for f in files:
                             fl = f.lower()
@@ -419,7 +419,7 @@ class DeviceDetector:
             for rdir in relay_dirs:
                 for root, dirs, files in os.walk(rdir):
                     dirs[:] = [d for d in dirs
-                               if d.lower() not in ("found.000", "system volume information")
+                               if d.lower() not in ("found.000", "system volume information", "已读")
                                and d.lower() != "$recycle.bin"]
                     for f in files:
                         fl = f.lower()
@@ -2532,6 +2532,18 @@ def batch_autoscan():
         })
         seen.add(ds)
         added.append(ds)
+        # 已读入的接力 vi2 归档到「已读/」子目录，避免下次批次重复读入历史积压
+        try:
+            if dev.get("_relay") and dev.get("path"):
+                _src = dev["path"]
+                if str(_src).lower().endswith(".vi2") and os.path.isfile(_src):
+                    _dst_dir = os.path.join(os.path.dirname(_src), "已读")
+                    os.makedirs(_dst_dir, exist_ok=True)
+                    _dst = os.path.join(_dst_dir, os.path.basename(_src))
+                    if _dst != _src and not os.path.exists(_dst):
+                        os.rename(_src, _dst)
+        except Exception:
+            pass
     return jsonify({"ok": True, "added": added, "count": len(BATCH["devices"])})
 
 
