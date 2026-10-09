@@ -876,9 +876,16 @@ async function batchStart() {
     document.getElementById('btn-batch-clear').style.display = '';
     document.getElementById('batch-current').innerHTML = '';
     let hint = '① 批次已重置，请<b>插入第 1 台温度计</b>，然后点「🔍 检测当前设备」';
-    if (r && r.raw_folder) {
-        hint += '<br><br>📁 已创建归档文件夹：<b>' + esc(r.raw_folder) + '</b>。' +
-            '如需用 Comfort Software(cc4.exe) 读取，请把导出的 <b>.vi2</b> 文件保存到该文件夹，工具会自动识别并读入这台设备的数据。';
+    if (r && r.collector_started) {
+        hint = '🤖 采集引擎已自动启动 —— 现在<b>只需插拔温度计</b>，工具会自动读取并导出原始数据。' +
+            '<br>插上第 1 台后点「🔍 检测当前设备」确认读入即可。';
+        // 轮询采集器状态
+        ensureCollectorPoll();
+    } else if ((r && r.raw_folder) || (r && !r.collector_started)) {
+        let extra = '';
+        if (r && r.raw_folder) extra += '<br><br>📁 已创建归档文件夹：<b>' + esc(r.raw_folder) + '</b>。';
+        if (r && !r.collector_started) extra += '<br>（若已装采集器并设置 ComSoft 路径，会自动启动；否则请手动把 .vi2 存到此文件夹）';
+        hint += extra;
     }
     setBatchStepHint(hint);
     setBatchList([]);
@@ -948,6 +955,29 @@ async function batchClear() {
     document.getElementById('btn-batch-start').disabled = false;
 }
 function setBatchStepHint(html) { document.getElementById('batch-step-hint').innerHTML = html; }
+
+// ─── 采集引擎状态（自动插拔读取）────────────────────────────────────────
+let collectorPollTimer = null;
+function ensureCollectorPoll() {
+    if (collectorPollTimer) return;
+    collectorPollTimer = setInterval(pollCollectorStatus, 3000);
+}
+async function pollCollectorStatus() {
+    try {
+        const r = await fetch('/api/collector/status').then(x => x.json());
+        const bar = document.getElementById('read-next-bar');
+        if (bar) {
+            const inner = bar.querySelector('.next-bar-inner');
+            if (inner) {
+                const st = r.running ? `<span style="color:#1b7f3b">● 采集引擎运行中</span>（插拔温度计即自动读取）`
+                                     : `<span style="color:#c0392b">● 采集引擎未运行</span>`;
+                const last = (r.log || []).slice(-1)[0] || '';
+                inner.innerHTML = st + (r.running ? `<br><span style="font-size:12px;color:#666">${esc(last)}</span>` : '');
+            }
+        }
+        if (r.running) { var _bar = document.getElementById('read-next-bar'); if (_bar) _bar.style.display = 'block'; }
+    } catch (e) { /* 忽略轮询错误 */ }
+}
 
 // ─── v3.1.0 批量上传 .vi2 → 一键导出 Excel ────────────────────────────────
 async function vi2UploadFiles(fileList) {

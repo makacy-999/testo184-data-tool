@@ -2218,6 +2218,103 @@ def get_point_data(session_id, point_number):
 # ─────────────────────────── v3.0.0 多设备批量插拔读取 ───────────────────────────
 BATCH = {"id": None, "devices": [], "running": False}
 
+# ─── 采集引擎（调用独立采集器 exe 驱动 ComSoft，自动导出 .vi2）─────────────────
+# 采集器 exe 与主程序 exe 放在同一目录（同一 zip 解压后）
+COLLECTOR = {"proc": None, "pid": None, "started": 0, "log": []}
+
+
+def _collector_exe():
+    """定位采集器 exe：优先主程序同目录的同名采集器，未打包时指向工作区脚本"""
+    if getattr(sys, "frozen", False):
+        exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+        cand = os.path.join(exe_dir, "TestoCollector-Windows.exe")
+        return cand if os.path.isfile(cand) else None
+    return None
+
+
+def _collector_script():
+    """开发模式：未打包时返回采集脚本路径（供本地验证/调试）"""
+    p = os.path.join(BASE_DIR, "collector", "testo184_vi2_export.py")
+    return p if os.path.isfile(p) else None
+
+
+def _collector_start(folder=None, comsoft=None, watch=True):
+    """启动采集引擎子进程。folder=输出目录(接力文件夹)；comsoft=cc4 路径。
+    返回 (ok, 消息)。采集器作为独立进程运行，崩溃不影响主程序。"""
+    import time as _t
+    exe = _collector_exe()          # 打包后：同目录采集器 exe
+    script = _collector_script()    # 开发模式：脚本
+    if exe is None and script is None:
+        COLLECTOR["log"].append("未找到采集器程序（TestoCollector-Windows.exe 或 collector 脚本）")
+        return False, "未找到采集器程序"
+    folder = folder or _ensure_desktop_raw_folder()
+    comsoft = comsoft or _saved_cc4_path()
+    cmd = []
+    if exe:
+        cmd = [exe]
+    else:
+        # 开发模式用系统 python 跑脚本；打包后不走这里
+        py = sys.executable
+        cmd = [py, script]
+    if folder:
+        cmd += ["--base", folder]
+    if comsoft:
+        cmd += ["--comsoft", comsoft]
+    if watch:
+        cmd.append("--watch")
+    try:
+        COLLECTOR["log"].append("启动采集器: %s" % " ".join(cmd))
+        logf = open(os.path.join(folder or APP_DATA_DIR, "collector.log"), "a", encoding="utf-8")
+        proc = subprocess.Popen(cmd, stdout=logf, stderr=subprocess.STDOUT,
+                                stdin=subprocess.DEVNULL, shell=False)
+        COLLECTOR["proc"] = proc
+        COLLECTOR["pid"] = proc.pid
+        COLLECTOR["started"] = int(_t.time())
+        return True, "采集器已启动"
+    except Exception as e:
+        COLLECTOR["log"].append("启动采集器失败: %s" % e)
+        return False, "启动采集器失败: %s" % e
+
+
+def _collector_stop():
+    if COLLECTOR.get("proc") and COLLECTOR["proc"].poll() is None:
+        try:
+            COLLECTOR["proc"].terminate()
+        except Exception:
+            pass
+        COLLECTOR["proc"] = None
+        COLLECTOR["pid"] = None
+        COLLECTOR["log"].append("采集器已停止")
+        return True
+    COLLECTOR["log"].append("采集器未在运行")
+    return False
+
+
+@app.route("/api/collector/status", methods=["GET"])
+def collector_status():
+    running = bool(COLLECTOR.get("proc") and COLLECTOR["proc"].poll() is None)
+    return jsonify({"running": running, "pid": COLLECTOR.get("pid"),
+                    "log": COLLECTOR.get("log", [])[-20:]})
+
+
+@app.route("/api/collector/start", methods=["POST"])
+def collector_start_api():
+    data = request.get_json(silent=True) or {}
+    folder = data.get("folder") or _ensure_desktop_raw_folder()
+    comsoft = data.get("comsoft") or _saved_cc4_path()
+    if not comsoft:
+        return jsonify({"error": "尚未设置 ComSoft 路径，请先在设置中填写 cc4.exe 位置"}), 400
+    ok, msg = _collector_start(folder, comsoft, watch=True)
+    if not ok:
+        return jsonify({"error": msg}), 500
+    return jsonify({"ok": True, "msg": msg, "folder": folder})
+
+
+@app.route("/api/collector/stop", methods=["POST"])
+def collector_stop_api():
+    _collector_stop()
+    return jsonify({"ok": True})
+
 
 def _batch_source(dev):
     if dev.get("_relay"):
@@ -2256,7 +2353,17 @@ def batch_start():
     BATCH["devices"] = []
     BATCH["running"] = True
     folder = _ensure_desktop_raw_folder()
-    return jsonify({"ok": True, "batch_id": BATCH["id"], "raw_folder": folder})
+    # 若已配置 ComSoft 且未在采集，自动启动采集引擎：用户只需插拔温度计
+    collector_alive = bool(COLLECTOR.get("proc") and COLLECTOR["proc"].poll() is None)
+    collector_started = False
+    if not collector_alive and _saved_cc4_path():
+        try:
+            ok, _m = _collector_start(folder, _saved_cc4_path(), watch=True)
+            collector_started = ok
+        except Exception:
+            collector_started = False
+    return jsonify({"ok": True, "batch_id": BATCH["id"], "raw_folder": folder,
+                    "collector_started": collector_started})
 
 
 def _ensure_desktop_raw_folder():
@@ -2403,6 +2510,7 @@ def batch_export():
 def batch_clear():
     BATCH["running"] = False
     BATCH["devices"] = []
+    _collector_stop()  # 结束采集，避免残留进程
     return jsonify({"ok": True})
 
 
