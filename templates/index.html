@@ -44,34 +44,29 @@
         <!-- 主内容区 -->
         <main class="main-content">
 
-            <!-- ===== 方式一：读取温度计设备 ===== -->
+            <!-- ===== 方式一：自动读取温度计设备（一键采集） ===== -->
             <section class="step-panel active" id="panel-read">
                 <div class="card" style="border:2px solid #4a90d9">
                     <div class="card-header">
-                        <h2>🔌 方式一 · 读取温度计设备</h2>
-                        <p class="card-desc">插入温度计 → 扫描 → 确认读取，数据进入统一列表。读数优先来自本地 Comfort Software (cc4.exe) 与设备 PDF 报告。</p>
+                        <h2>🔌 方式一 · 自动读取温度计</h2>
+                        <p class="card-desc">点击「开始批量读取」，插拔温度计即可自动读取原始数据并汇总，无需手动操作。</p>
                     </div>
                     <div class="card-body">
                         <div class="batch-actions" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-                            <button class="btn" id="btn-batch-detect-cc4">🖥 检测 CC4 / Comfort Software</button>
-                            <button class="btn" id="btn-batch-launch-cc4">▶ 启动 cc4.exe</button>
-                            <button class="btn" id="btn-batch-choose-cc4">📁 选择 cc4.exe</button>
-                            <input type="file" id="cc4-file-input" accept=".exe" style="display:none">
                             <button class="btn btn-success btn-lg" id="btn-batch-start">🚀 开始批量读取</button>
+                            <button class="btn" id="btn-cc4-setup" style="font-size:13px">⚙ 设置 Comfort Software 路径（首次）</button>
+                            <input type="file" id="cc4-file-input" accept=".exe" style="display:none">
                         </div>
-                        <div id="batch-cc4-info" class="muted" style="margin-top:10px;font-size:13px;color:#666"></div>
+                        <div id="batch-cc4-info" class="muted" style="margin-top:8px;font-size:13px;color:#666"></div>
 
                         <div id="batch-wizard" style="margin-top:16px;display:none">
-                            <div style="padding:12px 14px;background:#fff8e6;border:1px dashed #d9a34b;border-radius:8px;line-height:1.7" id="batch-step-hint">
-                                ① 点击「🚀 开始批量读取」后，<b>插入第 1 台温度计</b>
+                            <div style="padding:12px 14px;background:#fff8e6;border:1px dashed #d9a34b;border-radius:8px;line-height:1.8" id="batch-step-hint">
+                                ① 点击「🚀 开始批量读取」后，请<b>依次插拔每台温度计</b>，工具会自动读取
                             </div>
-                            <div style="margin-top:12px;display:flex;gap:12px;flex-wrap:wrap;align-items:center">
-                                <button class="btn btn-primary" id="btn-batch-detect">🔍 检测当前设备</button>
-                                <button class="btn btn-success" id="btn-batch-save" style="display:none">💾 保存这台设备</button>
-                            </div>
-                            <div id="batch-current" style="margin-top:12px"></div>
+                            <div id="batch-collector-state" style="margin-top:10px;padding:10px 12px;background:#f0f8f1;border-radius:8px;display:none"></div>
+                            <div id="batch-current" style="margin-top:10px"></div>
                             <div id="batch-done-actions" style="margin-top:14px;display:flex;gap:12px;flex-wrap:wrap">
-                                <button class="btn" id="btn-batch-next" style="display:none">✔ 已保存，准备下一台</button>
+                                <button class="btn btn-primary" id="btn-batch-detect">🔍 重新检测设备</button>
                                 <button class="btn btn-ghost" id="btn-batch-clear" style="display:none">↺ 重新开始</button>
                             </div>
                         </div>

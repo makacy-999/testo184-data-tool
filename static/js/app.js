@@ -774,9 +774,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // === 方式一：读取温度计设备 ===
-    $('btn-batch-detect-cc4').addEventListener('click', detectCc4);
-    $('btn-batch-launch-cc4').addEventListener('click', launchCc4);
-    $('btn-batch-choose-cc4').addEventListener('click', () => document.getElementById('cc4-file-input').click());
+    $('btn-cc4-setup').addEventListener('click', () => document.getElementById('cc4-file-input').click());
     document.getElementById('cc4-file-input').addEventListener('change', async (ev) => {
         const f = ev.target.files && ev.target.files[0];
         ev.target.value = '';
@@ -784,14 +782,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const info = document.getElementById('batch-cc4-info');
         try {
             const r = await fetch('/api/comsoft/set-path', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ exe: f.path || f.name }) }).then(x => x.json());
-            if (r.ok) info.innerHTML = '✅ 已记住 cc4 路径：' + esc(r.saved) + '<br>下次点「▶ 启动 cc4.exe」会直接用这个路径。';
+            if (r.ok) info.innerHTML = '✅ 已记住 Comfort Software 路径：<b>' + esc(r.saved) + '</b>';
             else info.textContent = r.error || '保存失败';
         } catch (e) { info.textContent = '保存失败：' + e.message; }
     });
     $('btn-batch-start').addEventListener('click', batchStart);
     $('btn-batch-detect').addEventListener('click', batchDetect);
-    $('btn-batch-save').addEventListener('click', batchSave);
-    $('btn-batch-next').addEventListener('click', batchNext);
     $('btn-batch-clear').addEventListener('click', batchClear);
 
     // === 方式二：批量上传 vi2 ===
@@ -868,75 +864,71 @@ async function launchCc4() {
     } catch (e) { info.textContent = '启动失败：' + e.message; }
 }
 async function batchStart() {
-    const r = await fetch('/api/batch/start', { method: 'POST' }).then(x => x.json());
     document.getElementById('batch-wizard').style.display = 'block';
-    document.getElementById('btn-batch-detect').style.display = '';
     document.getElementById('btn-batch-start').disabled = true;
-    document.getElementById('btn-batch-next').style.display = 'none';
     document.getElementById('btn-batch-clear').style.display = '';
     document.getElementById('batch-current').innerHTML = '';
-    let hint = '① 批次已重置，请<b>插入第 1 台温度计</b>，然后点「🔍 检测当前设备」';
-    if (r && r.collector_started) {
-        hint = '🤖 采集引擎已自动启动 —— 现在<b>只需插拔温度计</b>，工具会自动读取并导出原始数据。' +
-            '<br>插上第 1 台后点「🔍 检测当前设备」确认读入即可。';
-        // 轮询采集器状态
-        ensureCollectorPoll();
-    } else if ((r && r.raw_folder) || (r && !r.collector_started)) {
-        let extra = '';
-        if (r && r.raw_folder) extra += '<br><br>📁 已创建归档文件夹：<b>' + esc(r.raw_folder) + '</b>。';
-        if (r && !r.collector_started) extra += '<br>（若已装采集器并设置 ComSoft 路径，会自动启动；否则请手动把 .vi2 存到此文件夹）';
-        hint += extra;
+    // 先探测 ComSoft 路径是否已设置
+    let cc4 = '';
+    try {
+        const p = await fetch('/api/comsoft/get-path').then(x => x.json());
+        if (p && p.path) cc4 = p.path;
+    } catch (e) { /* 忽略 */ }
+    if (!cc4) {
+        setBatchStepHint('⚠️ 请先点击上方「⚙ 设置 Comfort Software 路径」，选择你的 cc4.exe（通常在 D:\\Testo\\Comfort Software\\cc4.exe），之后再点开始。');
+        document.getElementById('btn-batch-start').disabled = false;
+        return;
     }
-    setBatchStepHint(hint);
-    setBatchList([]);
+    try {
+        const r = await fetch('/api/collector/start', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({}) }).then(x => x.json());
+        if (!r.ok) {
+            setBatchStepHint('❌ 采集启动失败：' + esc(r.error || '未知错误'));
+            document.getElementById('btn-batch-start').disabled = false;
+            return;
+        }
+    } catch (e) {
+        setBatchStepHint('❌ 采集启动失败：' + esc(e.message));
+        document.getElementById('btn-batch-start').disabled = false;
+        return;
+    }
+    setBatchStepHint('🤖 采集已启动 —— 现在请<b>依次插拔每一台温度计</b>，工具会自动读取原始数据并收集。<br>插完所有温度计后，点下方「进入下一环节」即可分析导出。');
+    // 显示采集运行状态 + 自动刷新已读入列表（每次轮询都自动扫描接力文件夹新增 vi2）
+    ensureCollectorPoll();
+    batchAutoRefreshTimer = setInterval(() => {
+        refreshBatchList();
+        pollCollectorStatus();
+    }, 4000);
 }
+let batchAutoRefreshTimer = null;
 async function batchDetect() {
     const box = document.getElementById('batch-current');
     box.innerHTML = '检测中…';
-    const r = await fetch('/api/batch/detect', { method: 'POST' }).then(x => x.json());
-    if (!r.detected) {
-        box.innerHTML = '<div style="color:#c0392b">未检测到设备：' + esc(r.message || '') +
-            '<br>请确认温度计已插好（如需官方软件参与，可先点「🖥 检测 CC4」确认已就绪）。</div>';
-        return;
-    }
-    const d = r.device, sb = document.getElementById('btn-batch-save');
-    if (r.already) sb.style.display = 'none'; else { sb.style.display = ''; sb.dataset.sn = d.sn; }
-    box.innerHTML =
-        '<div style="border:1px solid #e0e0e0;border-radius:8px;padding:12px;line-height:1.8;background:#fbfcfe">' +
-        '<b>SN:</b> ' + esc(d.sn) + (r.already ? ' <span style="color:#c0392b">(本批次已保存，可跳过)</span>' : '') +
-        '<br><b>数据来源:</b> ' + esc(d.source) +
-        '<br><b>记录条数:</b> ' + d.record_count + ' 条' +
-        '　<b>时间:</b> ' + esc(d.start_time || '—') + ' → ' + esc(d.end_time || '—') +
-        '<br><b>温度:</b> 最低 ' + (d.temp_min != null ? d.temp_min : '—') + '°C / 最高 ' +
-        (d.temp_max != null ? d.temp_max : '—') + '°C / 平均 ' + (d.temp_avg != null ? d.temp_avg : '—') + '°C</div>';
-}
-async function batchSave() {
-    const sn = document.getElementById('btn-batch-save').dataset.sn;
-    const box = document.getElementById('batch-current');
-    const r = await fetch('/api/batch/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sn }) }).then(x => x.json());
-    if (!r.ok) { box.innerHTML = '<div style="color:#c0392b">保存失败：' + esc(r.error || '') + '</div>'; return; }
-    document.getElementById('btn-batch-save').style.display = 'none';
-    if (r.duplicate) {
-        box.innerHTML = '<div style="color:#b26a00">该设备已在本批次中（跳过重复）。</div>';
+    const r = await fetch('/api/batch/autoscan', { method: 'POST' }).then(x => x.json());
+    if (r.ok && r.count) {
+        const added = (r.added && r.added.length) ? '（新增 <b>' + r.added.length + '</b> 台）' : '（本次无新增，共已读入 <b>' + r.count + '</b> 台）';
+        box.innerHTML = '<div style="color:#1b7f3b">✅ 已自动读入：共 <b>' + r.count + '</b> 台温度计 ' + added +
+            '<br><span style="font-size:12px;color:#666">继续插拔下一台，工具会自动收集。</span></div>';
+    } else if (r.error) {
+        box.innerHTML = '<div style="color:#c0392b">检测失败：' + esc(r.error) + '</div>';
     } else {
-        box.innerHTML = '<div style="color:#1e7e34">✅ 本台已保存：<b>' + esc(r.sn || sn) + '</b>（' + r.record_count + ' 条）。<br>请<b>拔下这台，插入下一台</b>，或点「✔ 准备下一台」继续。</div>';
+        box.innerHTML = '<div style="color:#c0392b">未检测到新增设备：' +
+            '<br>请确认温度计已插好或采集器已完成导出，稍后再点检测。</div>';
     }
-    document.getElementById('btn-batch-next').style.display = '';
-    if (r.device_count) refreshAll();
     await refreshBatchList();
 }
-async function batchNext() {
-    document.getElementById('batch-current').innerHTML = '';
-    document.getElementById('btn-batch-next').style.display = 'none';
-    const r = await fetch('/api/batch/status').then(x => x.json());
-    const n = (r.devices || []).length;
-    setBatchList(r.devices || []);
-    setBatchStepHint('② 已保存 <b>' + n + '</b> 台。请<b>插入第 ' + (n + 1) + '</b> 台温度计</b>，然后点「🔍 检测当前设备」');
-    if (n >= 1) refreshAll();
-}
 async function refreshBatchList() {
+    // 一键全自动：先自动扫描接力文件夹/已插设备，把新增测点读入批次（幂等去重）
+    try {
+        await fetch('/api/batch/autoscan', { method: 'POST' }).then(x => x.json());
+    } catch (e) { /* 忽略 */ }
     const r = await fetch('/api/batch/status').then(x => x.json());
     setBatchList(r.devices || []);
+    const n = (r.devices || []).length;
+    document.getElementById('read-point-count').textContent = n;
+    if (n > 0) {
+        document.getElementById('read-next-bar').style.display = '';
+        document.getElementById('btn-batch-clear').style.display = '';
+    }
 }
 async function batchExport() {
     const box = document.getElementById('batch-current');
