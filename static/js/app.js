@@ -774,18 +774,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     // === 方式一：读取温度计设备 ===
-    $('btn-cc4-setup').addEventListener('click', () => document.getElementById('cc4-file-input').click());
-    document.getElementById('cc4-file-input').addEventListener('change', async (ev) => {
-        const f = ev.target.files && ev.target.files[0];
-        ev.target.value = '';
-        if (!f) return;
-        const info = document.getElementById('batch-cc4-info');
-        try {
-            const r = await fetch('/api/comsoft/set-path', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ exe: f.path || f.name }) }).then(x => x.json());
-            if (r.ok) info.innerHTML = '✅ 已记住 Comfort Software 路径：<b>' + esc(r.saved) + '</b>';
-            else info.textContent = r.error || '保存失败';
-        } catch (e) { info.textContent = '保存失败：' + e.message; }
+    // ⚙ 设置 Comfort Software 路径：展开面板，支持"自动检测"或"手动输入完整路径"
+    $('btn-cc4-setup').addEventListener('click', () => {
+        const panel = document.getElementById('cc4-panel');
+        panel.style.display = (panel.style.display === 'none') ? 'block' : 'none';
+        cc4RefreshPanel();
     });
+    $('btn-cc4-autodetect').addEventListener('click', cc4AutoDetect);
+    $('btn-cc4-save').addEventListener('click', cc4SaveInput);
+    document.getElementById('cc4-path-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') cc4SaveInput(); });
     $('btn-batch-start').addEventListener('click', batchStart);
     $('btn-batch-detect').addEventListener('click', batchDetect);
     $('btn-batch-clear').addEventListener('click', batchClear);
@@ -863,6 +860,57 @@ async function launchCc4() {
         else info.textContent = r.error || '启动失败';
     } catch (e) { info.textContent = '启动失败：' + e.message; }
 }
+async function cc4RefreshPanel() {
+    const info = document.getElementById('batch-cc4-info');
+    try {
+        const r = await fetch('/api/comsoft/get-path').then(x => x.json());
+        if (r && r.path) {
+            document.getElementById('cc4-path-input').value = r.path;
+            info.innerHTML = '当前已保存路径：<b>' + esc(r.path) + '</b>';
+        } else {
+            info.textContent = '尚未设置。请「自动检测」，或手动输入 cc4.exe 的完整路径后点「保存」。';
+        }
+    } catch (e) { info.textContent = '读取已保存路径失败：' + e.message; }
+}
+
+async function cc4AutoDetect() {
+    const info = document.getElementById('batch-cc4-info');
+    const input = document.getElementById('cc4-path-input');
+    info.innerHTML = '🔎 正在自动扫描已安装的 Testo/ComSoft…';
+    try {
+        const r = await fetch('/api/comsoft/detect').then(x => x.json());
+        let found = null;
+        const softs = r.softwares || [];
+        // 优先 cc4.exe（ComSoft），其次 testo 相关 exe
+        found = softs.find(s => s.exe && /cc4\.exe$/i.test(s.exe))
+             || softs.find(s => s.exe && /(comsoft|testo)/i.test(s.exe))
+             || softs[0];
+        if (found && found.exe) {
+            input.value = found.exe;
+            // 自动保存
+            const res = await fetch('/api/comsoft/set-path', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ exe: found.exe }) }).then(x => x.json());
+            if (res.ok) info.innerHTML = '✅ 已自动检测并保存：<b>' + esc(res.saved) + '</b>';
+            else info.textContent = '检测到但保存失败：' + (res.error || '');
+        } else {
+            info.innerHTML = '未自动检测到 cc4.exe。请手动输入完整路径后点「保存」。<br><span style="font-size:12px;color:#888">默认位置通常是 <code>D:\\Testo\\Comfort Software\\cc4.exe</code> 或 <code>C:\\Program Files (x86)\\Testo\\Comfort Software\\cc4.exe</code></span>';
+        }
+    } catch (e) { info.textContent = '自动检测失败：' + e.message; }
+}
+
+async function cc4SaveInput() {
+    const info = document.getElementById('batch-cc4-info');
+    const p = document.getElementById('cc4-path-input').value.trim();
+    if (!p) { info.textContent = '请输入 cc4.exe 的完整路径，或点「🔎 自动检测」。'; return; }
+    // 用户常粘贴带引号的路径，去掉
+    const clean = p.replace(/^"+|"+$/g, '');
+    info.innerHTML = '保存中…';
+    try {
+        const r = await fetch('/api/comsoft/set-path', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({ exe: clean }) }).then(x => x.json());
+        if (r.ok) info.innerHTML = '✅ 已保存 Comfort Software 路径：<b>' + esc(r.saved) + '</b>';
+        else info.innerHTML = '❌ 保存失败：' + esc(r.error || '') + '<br><span style="font-size:12px;color:#888">请确认路径正确（包含文件名 cc4.exe 且文件确实存在），例如 <code>D:\\Testo\\Comfort Software\\cc4.exe</code></span>';
+    } catch (e) { info.textContent = '保存失败：' + e.message; }
+}
+
 async function batchStart() {
     document.getElementById('batch-wizard').style.display = 'block';
     document.getElementById('btn-batch-start').disabled = true;
