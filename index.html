@@ -113,12 +113,12 @@ footer .lic{opacity:.8}
   <section class="hero" aria-labelledby="main-title">
     <div class="wrap">
       <div>
-        <span class="tag">v3.3.0 · 免安装 · 数据仅存本机</span>
+        <span class="tag">v3.3.1 · 单文件免安装 · 数据仅存本机</span>
         <h1 id="main-title">把 Testo 184 温度计的数据，<br>变成一张汇总 Excel</h1>
-        <p class="lead">逐台插入温度计自动读取——<b>用 Testo ComSoft 软件接力导出，工具自动读入</b>：开始批量读取时自动在桌面建「温度计原始数据-日期」文件夹，设备序列号自动识别；也可直接批量导入 <b>.vi2</b> 文件。一键「分析并导出」：每个测点独立一个「测点N」表格（<b>表头带设备名称、起止时间、统计值、极限值、SN</b>），再加一个按时间对齐的「汇总-演示-日期」汇总表，打包 zip 下载。所有操作与测量数据仅在本机完成，不上传。支持 Windows 系统。</p>
+        <p class="lead">只运行<b>一个 .exe</b>，插拔温度计即全自动读取——点击「开始批量读取」，内置采集引擎自动驱动 Testo ComSoft 接力导出并把 <b>.vi2</b> 读入；每个测点自动识别 SN，全程无需手动操作。一键「分析并导出」：每个测点独立一个「测点N」表格（<b>表头带设备名称、起止时间、统计值、极限值、SN</b>），再加一个按时间对齐的「汇总-演示-日期」汇总表，打包 zip 下载。所有操作与测量数据仅在本机完成，不上传。支持 Windows 系统。</p>
         <div class="dl-row">
-          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v3.3.0/Testo184Tool-Windows-v3.3.0.zip" target="_blank" rel="noopener noreferrer">下载 Windows 版 <span class="num">33.0 MB · ZIP</span></a>
-          <a class="btn btn-ghost" href="https://github.com/makacy-999/testo184-data-tool/releases/tag/v3.3.0" target="_blank" rel="noopener noreferrer">版本发布页</a>
+          <a class="btn btn-primary" href="https://github.com/makacy-999/testo184-data-tool/releases/download/v3.3.0/Testo184Tool-Windows-v3.3.1.zip" target="_blank" rel="noopener noreferrer">下载 Windows 版 <span class="num">ZIP · 单文件</span></a>
+          <a class="btn btn-ghost" href="https://github.com/makacy-999/testo184-data-tool/releases/tag/v3.3.1" target="_blank" rel="noopener noreferrer">版本发布页</a>
         </div>
         <p class="meta-note">首次运行会自动在桌面创建快捷方式并设为开机自启，之后自动后台运行、直接打开网页即可使用。测量数据 100% 保存在本机，不上传任何服务器。</p>
       </div>
@@ -206,7 +206,7 @@ footer .lic{opacity:.8}
       <div class="start">
         <div class="card">
           <h3>方式一 · 下载可执行文件（推荐）</h3>
-          <p>适合非技术同事，无需安装任何环境。首次运行自动完成全部配置。</p>
+          <p>适合非技术同事，无需安装任何环境。解压后只有一个 .exe，双击即可使用。</p>
           <ol>
             <li>在页首点击「下载 Windows 版」，解压后双击运行即可；</li>
             <li>工具会自动在<b>桌面创建快捷方式</b>，并<b>设为开机自启</b>；</li>
@@ -230,7 +230,7 @@ footer .lic{opacity:.8}
       <details><summary>为什么我下次直接打开网页就能用？</summary><div class="ans">首次双击运行时，工具会自动在你的<b>桌面创建快捷方式</b>，并<b>注册为开机自启</b>。之后每次开机它都在后台自动运行（不弹窗、不干扰），你只需在浏览器打开 <code>http://localhost:8000</code> 就能直接使用，无需再手动启动。若想彻底停用自启，在桌面图标右键 → 打开所在位置删除，再到「任务管理器 → 启动」里禁用该项即可。</div></details>
       <details><summary>数据存哪里？会上传吗？</summary><div class="ans">全部保存在你电脑上的本地数据库（程序目录的 <code>data</code> 子目录），不经过任何服务器。导出的 Excel 也只生成在本机，由你自己分发。</div></details>
       <details><summary>支持哪些型号？可以同时插多台吗？</summary><div class="ans">当前版本针对 <strong>Testo 184</strong> 系列设计。读取方式为逐台插入：插一台读一台，读完提示更换下一台——这样测点与设备 SN 的对应关系最可靠，也避免 USB Hub 供电不足导致读数失败。</div></details>
-      <details><summary>温度计读不到数据？用软件联动自动转 Excel。</summary><div class="ans">部分 Testo 184 固件的完整数据需官方软件读取。工具已内置「接力读取」：点「开始批量读取」后，<b>自动在桌面创建「温度计原始数据-日期」文件夹</b>（如温度计原始数据-2026-09-29）；插入温度计点「检测当前设备」，「一键调用 Testo 软件」打开电脑上的 ComSoft/Testo 软件，在软件里读取并保存 <code>.vi2</code> 到该文件夹；工具检测到新文件即自动识别读入（自动识别 SN、极限值、采样间隔、起止时间），提示更换下一台，几台依次读完即可，最后「分析并导出」Excel。也可直接把温度计 U 盘或本机的 <code>.vi2 / .vi2</code> 文件批量上传导入；导出时每个测点独立一张「测点N」表，表头自动带设备概况与极限值。</div></details>
+      <details><summary>温度计读不到数据？用软件联动自动转 Excel。</summary><div class="ans">部分 Testo 184 固件的完整数据需官方软件读取。工具已内置<b>全自动采集</b>：点「开始批量读取」（若尚未设置，首次先点「⚙ 设置 Comfort Software 路径」选择电脑上的 <code>cc4.exe</code>），工具便在内置后台自动驱动 Testo ComSoft 接力导出 <code>.vi2</code>；此后你只需<b>依次插拔每一台温度计</b>，工具每隔几秒自动扫描接力文件夹，把新导出的测点自动读入（自动识别 SN、极限值、采样间隔、起止时间），无需任何手动操作。插完所有温度计，点「进入下一环节 → 分析导出」即可得到 Excel。也可直接把温度计 U 盘或本机的 <code>.vi2</code> 文件批量上传导入；导出时每个测点独立一张「测点N」表，表头自动带设备概况与极限值。</div></details>
 <details><summary>识别不到温度计怎么办？</summary><div class="ans">点击「扫描 USB 设备」前先确认设备指示灯亮起；如仍无法识别，换个 USB 口或转接头再扫。接入后系统会把设备识别为一个移动磁盘。</div></details>
       <details><summary>读错了能重读吗？历史能找回吗？</summary><div class="ans">可以。读取确认前可放弃重插；确认后发现错误，可在会话中删除该测点重读。所有历史会话保存在本机数据库，打开应用即可切换查看。</div></details>
       <details><summary>是开源的吗？</summary><div class="ans">是，采用 MIT 协议开源，源码与更新发布在 <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub 仓库</a>。</div></details>
@@ -240,7 +240,7 @@ footer .lic{opacity:.8}
 
 <footer>
   <div class="wrap">
-    <div>Testo 184 数据读取汇总工具 · <span class="num">v3.3.0</span> · <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub</a></div>
+    <div>Testo 184 数据读取汇总工具 · <span class="num">v3.3.1</span> · <a href="https://github.com/makacy-999/testo184-data-tool" target="_blank" rel="noopener noreferrer">GitHub</a></div>
     <div class="lic">MIT License · 数据仅存本机</div>
   </div>
 </footer>
