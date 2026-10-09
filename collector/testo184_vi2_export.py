@@ -86,7 +86,6 @@ DEFAULT_CONFIG = {
     "date_format": "%Y-%m-%d",
     "comsoft_exe": r"D:\Testo\Comfort Software\cc4.exe",
     "close_tabs_after_export": True,
-    "minimize_after_export": True,
 }
 TREE_ITEM_RE = re.compile(r"testo\s*184.*?(\d{6,})", re.IGNORECASE)
 REPORT_LEAF = "testo 184 measurement report.pdf"
@@ -104,7 +103,6 @@ WM_CLOSE = 0x0010
 SC_CLOSE = 0xF060
 BM_CLICK = 0x00F5
 SW_RESTORE = 9
-SW_MINIMIZE = 6
 
 try:
     sys.stdout.reconfigure(errors="replace")
@@ -288,32 +286,6 @@ def foreground(hwnd: int):
     except Exception:
         pass
         pass
-
-
-def restore_foreground_ready(hwnd: int, timeout: float = 1.5) -> bool:
-    """恢复窗口到前台并等待其**可见、非最小化、就绪**。
-
-    用于导出瞬间：物理点击依赖屏幕绝对坐标，窗口一旦被最小化，
-    元素 rect 拿到的坐标指向任务栏，点击必然落空。因此导出前必须
-    确保窗口完整恢复且真正可见，再开始交互。
-    """
-    try:
-        # 若已最小化，先恢复
-        if u32.IsIconic(hwnd):
-            u32.ShowWindow(hwnd, SW_RESTORE)
-        u32.ShowWindow(hwnd, SW_RESTORE)
-        time.sleep(0.05)
-        deadline = time.time() + timeout
-        while time.time() < deadline:
-            if (u32.IsWindowVisible(hwnd)
-                    and not u32.IsIconic(hwnd)
-                    and u32.GetForegroundWindow() == hwnd):
-                return True
-            u32.SetForegroundWindow(hwnd)
-            time.sleep(0.04)
-        return False
-    except Exception:
-        return False
 
 
 def find_main_hwnd(pid: int) -> int:
@@ -778,19 +750,6 @@ class Comsoft:
 
     def foreground(self):
         foreground(self.hwnd)
-
-    def ensure_foreground_ready(self, timeout: float = 1.5) -> bool:
-        """导出前调用：完整恢复前台并等窗口可见、非最小化、就绪。"""
-        return restore_foreground_ready(self.hwnd, timeout)
-
-    def minimize(self):
-        """最小化到任务栏（不抢前台），仅用于**空闲轮询**时段收起，导出瞬间会先恢复。"""
-        try:
-            h = self.hwnd
-            if h and not u32.IsIconic(h):
-                u32.ShowWindow(h, SW_MINIMIZE)
-        except Exception:
-            pass
 
     # ---- 部件定位 ----
     def devices(self, use_cache=False):
@@ -1355,32 +1314,22 @@ def run_watch(base: Path, cfg: dict, force: bool) -> int:
     if not ensure_comsoft(cfg, cs):
         log("[错误] 未找到 Comsoft 主窗口")
         return 1
-    _min = bool(cfg.get("minimize_after_export", True))
-    # 启动保持前台，先做一轮探测；空闲期才最小化，避免一开始就进最小化态导致
-    # 元素 rect/坐标失效、物理点击落空、读取失败。
+    cs.foreground()
     log(f"监视中（每 {cfg['poll_interval']:g} 秒检查一次，Ctrl+C 退出）。输出：{base}")
     try:
         while True:
             try:
-                # 空闲期窗口可能被最小化；导出前必须先完整恢复前台并确认可见就绪
-                if _min:
-                    cs.ensure_foreground_ready()
                 day = base / datetime.now().strftime(cfg["date_format"])
                 day.mkdir(parents=True, exist_ok=True)
-                found = False
                 for serial, dev in sorted(cs.devices().items()):
                     target = day / f"{serial}.vi2"
                     if target.exists() and not force and serial_in_file(target, serial):
                         continue
-                    found = True
                     log(f"\n[{datetime.now():%H:%M:%S}] 发现设备 {serial}，开始导出...")
-                    cs.ensure_foreground_ready(2.0)
+                    cs.foreground()
                     status = export_one(cs, serial, dev, target, force)
                     log_row(base, serial, target,
                             {"OK": "已保存(.vi2)"}.get(status, f"失败:{status}"))
-                # 本轮所有设备处理完后，若没有继续导出，才在空闲期最小化（不抢前台）
-                if _min and not found:
-                    cs.minimize()
             except Exception as e:
                 log(f"[警告] 轮询异常：{e}")
             time.sleep(float(cfg["poll_interval"]))

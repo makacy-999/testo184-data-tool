@@ -993,6 +993,9 @@ async function batchClear() {
     document.getElementById('batch-list').innerHTML = '';
     document.getElementById('batch-current').innerHTML = '';
     document.getElementById('btn-batch-start').disabled = false;
+    document.getElementById('btn-batch-clear').style.display = 'none';
+    document.getElementById('read-next-bar').style.display = 'none';
+    document.getElementById('read-point-count').textContent = '0';
 }
 function setBatchStepHint(html) { document.getElementById('batch-step-hint').innerHTML = html; }
 
