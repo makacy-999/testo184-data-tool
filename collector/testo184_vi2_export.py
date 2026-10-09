@@ -86,6 +86,7 @@ DEFAULT_CONFIG = {
     "date_format": "%Y-%m-%d",
     "comsoft_exe": r"D:\Testo\Comfort Software\cc4.exe",
     "close_tabs_after_export": True,
+    "minimize_after_export": True,
 }
 TREE_ITEM_RE = re.compile(r"testo\s*184.*?(\d{6,})", re.IGNORECASE)
 REPORT_LEAF = "testo 184 measurement report.pdf"
@@ -103,6 +104,7 @@ WM_CLOSE = 0x0010
 SC_CLOSE = 0xF060
 BM_CLICK = 0x00F5
 SW_RESTORE = 9
+SW_MINIMIZE = 6
 
 try:
     sys.stdout.reconfigure(errors="replace")
@@ -751,6 +753,15 @@ class Comsoft:
     def foreground(self):
         foreground(self.hwnd)
 
+    def minimize(self):
+        """最小化到任务栏（不抢前台），用于导出完成后让窗口自动收起。"""
+        try:
+            h = self.hwnd
+            if h and not u32.IsIconic(h):
+                u32.ShowWindow(h, SW_MINIMIZE)
+        except Exception:
+            pass
+
     # ---- 部件定位 ----
     def devices(self, use_cache=False):
         """{serial: element}；存档树只显示当前插着的设备。
@@ -1314,7 +1325,10 @@ def run_watch(base: Path, cfg: dict, force: bool) -> int:
     if not ensure_comsoft(cfg, cs):
         log("[错误] 未找到 Comsoft 主窗口")
         return 1
-    cs.foreground()
+    # 启动后先最小化，避免弹窗打扰；仅在导出操作瞬间才需要临时恢复前台
+    _min = bool(cfg.get("minimize_after_export", True))
+    if _min:
+        cs.minimize()
     log(f"监视中（每 {cfg['poll_interval']:g} 秒检查一次，Ctrl+C 退出）。输出：{base}")
     try:
         while True:
@@ -1330,8 +1344,12 @@ def run_watch(base: Path, cfg: dict, force: bool) -> int:
                     status = export_one(cs, serial, dev, target, force)
                     log_row(base, serial, target,
                             {"OK": "已保存(.vi2)"}.get(status, f"失败:{status}"))
+                    if _min:
+                        cs.minimize()
             except Exception as e:
                 log(f"[警告] 轮询异常：{e}")
+            if _min:
+                cs.minimize()
             time.sleep(float(cfg["poll_interval"]))
     except KeyboardInterrupt:
         log("\n已停止监视。")
