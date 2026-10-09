@@ -1005,17 +1005,31 @@ function ensureCollectorPoll() {
 async function pollCollectorStatus() {
     try {
         const r = await fetch('/api/collector/status').then(x => x.json());
+        // 采集专用状态面板：展示运行状态 + 最近日志
+        const panel = document.getElementById('batch-collector-state');
+        if (panel) {
+            const st = r.running
+                ? '<span style="color:#1b7f3b">● 采集引擎运行中</span>（插拔温度计即自动读取导出）'
+                : '<span style="color:#c0392b">● 采集引擎未运行</span>';
+            const logs = (r.log || []).slice(-6);
+            let logHtml = '';
+            if (logs.length) {
+                logHtml = '<div style="margin-top:6px;font-family:monospace;font-size:12px;line-height:1.6;color:#555;background:#fbfcfd;border:1px solid #eef1f4;border-radius:5px;padding:8px 10px;max-height:130px;overflow:auto">' +
+                    logs.map(x => esc(x)).join('<br>') + '</div>';
+            }
+            panel.style.display = 'block';
+            panel.innerHTML = '<div style="font-size:13px">' + st + '</div>' + logHtml;
+        }
+        // next-bar 也显示状态
         const bar = document.getElementById('read-next-bar');
         if (bar) {
             const inner = bar.querySelector('.next-bar-inner');
             if (inner) {
-                const st = r.running ? `<span style="color:#1b7f3b">● 采集引擎运行中</span>（插拔温度计即自动读取）`
-                                     : `<span style="color:#c0392b">● 采集引擎未运行</span>`;
+                const st = r.running ? `<span style="color:#1b7f3b">● 采集引擎运行中</span>` : `<span style="color:#c0392b">● 采集引擎未运行</span>`;
                 const last = (r.log || []).slice(-1)[0] || '';
-                inner.innerHTML = st + (r.running ? `<br><span style="font-size:12px;color:#666">${esc(last)}</span>` : '');
+                inner.innerHTML = st + (last ? `<br><span style="font-size:12px;color:#666">${esc(last)}</span>` : '');
             }
         }
-        if (r.running) { var _bar = document.getElementById('read-next-bar'); if (_bar) _bar.style.display = 'block'; }
     } catch (e) { /* 忽略轮询错误 */ }
 }
 

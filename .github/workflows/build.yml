@@ -31,10 +31,12 @@ jobs:
             --add-data "static;static" \
             --add-data "vi2_parser.py;." \
             --add-data "collector;collector" \
-            --hidden-import comtypes \
+            --collect-all comtypes \
             --hidden-import comtypes.stream \
             --hidden-import comtypes.automation \
             app.py
+          # 打印 exe 大小便于核对
+          python -c "import glob,os; [print('  EXE', f, os.path.getsize(f)//1024, 'KB') for f in glob.glob('dist/*.exe')]"
 
       - name: Package into ZIP
         shell: bash

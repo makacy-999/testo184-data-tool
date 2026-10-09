@@ -495,7 +495,14 @@ class DeviceDetector:
         except Exception:
             pass
         home = os.path.expanduser("~")
-        for base in ("Desktop", "桌面", "Documents", "文档"):
+        try:
+            raw = _ensure_desktop_raw_folder()
+            if raw:
+                dirs.append(raw)
+        except Exception:
+            pass
+        for base in ("Desktop", "桌面", "Documents", "文档",
+                     "OneDrive/Desktop", "OneDrive/桌面", "OneDrive/文档"):
             d = os.path.join(home, base)
             if os.path.isdir(d):
                 dirs.append(d)
@@ -2274,18 +2281,31 @@ def _collector_stop():
 @app.route("/api/collector/status", methods=["GET"])
 def collector_status():
     running = False
+    logs = []
     try:
         from collector import collector_driver as cd
         st = cd.status()
         running = st.get("running", False)
+        logs = st.get("log") or []
     except Exception:
         try:
             import collector_driver as cd
             st = cd.status()
             running = st.get("running", False)
+            logs = st.get("log") or []
         except Exception:
-            running = False
-    return jsonify({"running": running, "log": COLLECTOR.get("log", [])[-20:]})
+            pass
+    all_logs = list(logs) + list(COLLECTOR.get("log", [])[-10:])
+    seen = set()
+    merged = []
+    for x in reversed(all_logs):
+        if x not in seen:
+            seen.add(x)
+            merged.append(x)
+        if len(merged) >= 20:
+            break
+    merged.reverse()
+    return jsonify({"running": running, "log": merged})
 
 
 @app.route("/api/collector/start", methods=["POST"])
